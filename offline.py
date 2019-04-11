@@ -26,8 +26,8 @@ class Boggle_Instance():
     boggle4 = {'size': 4, 'dice': die16_}
     boggle5 = {'size': 5, 'dice': die25}
 
-    def __init__(self, ctx, word_list, config):
-        self.ctx = ctx
+    def __init__(self, id, word_list, config):
+        self.id = id
         self.word_list = word_list
         self.config = config
 
@@ -37,8 +37,14 @@ class Boggle_Instance():
         self.scores = defaultdict(int)
         self.plays = defaultdict(set)
 
-    def format(self):
-        return '\n'.join([' '.join(row).upper() for row in self.board])
+    def format_board(self):
+        return '\n\t'.join([' '.join(row).upper() for row in self.board])
+
+    def format_play(self):
+        return self.plays
+
+    def format_score(self):
+        return self.scores
 
     def shuffle_board(self):
         dice = self.config['dice']
@@ -113,11 +119,6 @@ if __name__ == "__main__":
     offline_boggle.shuffle_board()
     for row in offline_boggle.board:
         print(row.upper())
-
-    input_ = ''
-    while input_ != 'q':
-        offline_boggle.play(random.randint(0,5), input_.split(' '))
-        input_ = input()
 
     print(offline_boggle.plays)
     offline_boggle.round_over()
