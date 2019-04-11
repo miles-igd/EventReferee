@@ -40,13 +40,17 @@ class Boggle_Instance():
     def format_board(self):
         return '\n\t'.join([' '.join(row).upper() for row in self.board])
 
-    def format_play(self):
-        return self.plays
+    def format_play(self, bot, top_scores, top_words):
+        scores = '/n'.join([f'{bot.get_user(player).name:>13}:{score:<3}:{top_words[player]:<14}'
+                             for player, score in top_scores.items()])
+        return scores
 
     def format_score(self):
         return self.scores
 
     def shuffle_board(self):
+        self.plays.clear()
+
         dice = self.config['dice']
         size = self.config['size']
 
@@ -71,43 +75,48 @@ class Boggle_Instance():
         for y, row in enumerate(board):
             for x, letter in enumerate(row):
                 for result in self.extending(letter, board, prefixes, words, ((x, y),)):
-                    asyncio.sleep(0)
                     yield result
 
     def extending(self, prefix, board, prefixes, words, path):
         if prefix in words:
-            asyncio.sleep(0)
             yield prefix #(prefix, path)
         for (nx, ny) in self.neighbors(*path[-1], self.config['size']):
             if (nx, ny) not in path:
                 prefix1 = prefix + board[ny][nx]
                 if prefix1 in prefixes:
                     for result in self.extending(prefix1, board, prefixes, words, path + ((nx, ny),)):
-                        asyncio.sleep(0)
                         yield result
                         
     @staticmethod
     def neighbors(x, y, size):
         for nx in range(max(0, x-1), min(x+2, size)):
             for ny in range(max(0, y-1), min(y+2, size)):
-                asyncio.sleep(0)
                 yield nx, ny
 
-    def play(self, user, *words):
+    def play(self, user, words):
         try:
-            self.plays[user].update(*words)
+            self.plays[user].update(words.split(' '))
         except TypeError:
             pass
 
     def round_over(self):
+        round_score = defaultdict(int)
+        round_words = defaultdict(str)
+
         for player, words in self.plays.items():
             for word in words:
                 if word in self.words:
-                    self.scores[player] += self.score[len(word)] or 11
-            asyncio.sleep(0)
+                    length = len(word)
+                    score = self.score[length] or 11
+                    self.scores[player] += score
+
+                    if len(round_words[player]) < length:
+                        round_words[player] = word
+                    round_score[player] += score
 
         self.board = None
         self.words = None
+        return round_score, round_words
 
     def game_over(self):
         return self.scores

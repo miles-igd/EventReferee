@@ -5,7 +5,6 @@ import games
 from discord.ext import commands
 
 bot = commands.Bot(command_prefix='!', description='Referee Core Bot.')
-integer = None
 with open('_bot.creds', 'r') as file:
     creds = file.read()
 

@@ -6,6 +6,7 @@ import loader
 from discord.ext import commands
 
 class Boggle(commands.Cog):
+    round_timer = 180 #3 minutes
     words = loader.load(loader.files['words'])
     def __init__(self, bot):
         self.bot = bot
@@ -13,19 +14,18 @@ class Boggle(commands.Cog):
 
     @commands.Cog.listener()
     async def on_message(self, msg):
-        if msg.guild.id in self.games:
-            print(msg.content)
-            print(msg.guild.id)
+        if msg.channel.id in self.games and msg.author.bot is False:
+            self.games[msg.channel.id].play(msg.author.id, msg.content)
 
     @commands.command()
     async def boggle(self, ctx, rounds:int = 6, config=offline.Boggle_Instance.boggle5):
         if ctx.guild is None:
             return None
-        elif ctx.guild in self.games:
+        elif ctx.message.channel.id in self.games:
             await ctx.send('Game has already started...')
             return None
         else:
-            id = ctx.guild.id
+            id = ctx.message.channel.id
 
         self.games[id] = offline.Boggle_Instance(id, self.words, config)
         rounds = min(rounds, 6)
@@ -38,8 +38,12 @@ class Boggle(commands.Cog):
             await self.message(ctx, 'Boggle! You have three minutes to find words.', 
                           f'''```css\n\t{self.games[id].format_board()}```''')
 
-            await asyncio.sleep(10)
-            await self.message(ctx, 'Round over.', f'''```css\n\t{self.games[id].format_play()}```''')
+            await asyncio.sleep(30)
+            round_scores, round_words = self.games[id].round_over()
+            await self.message(ctx, 'Round over.', 
+            f'''```css\n{"User":>13}:{"Pts":<3}:Top Word
+{self.games[id].format_play(self.bot, round_scores, round_words)}```''')
+            
 
         await self.message(ctx, 'Game over.', f'''```css\n\t{self.games[id].format_score()}```''')
         
