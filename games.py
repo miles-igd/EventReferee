@@ -39,10 +39,9 @@ class Boggle(commands.Cog):
                           f'''```css\n\t{self.games[id].format_board()}```''')
 
             await asyncio.sleep(30)
-            round_scores, round_words = self.games[id].round_over()
+            results = self.games[id].round_over()
             await self.message(ctx, 'Round over.', 
-            f'''```css\n{"User":>13}:{"Pts":<3}:Top Word
-{self.games[id].format_play(self.bot, round_scores, round_words)}```''')
+            f'''```css\n{self.games[id].format_play(self.bot, results)}```''')
             
 
         await self.message(ctx, 'Game over.', f'''```css\n\t{self.games[id].format_score()}```''')

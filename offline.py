@@ -2,6 +2,7 @@ from collections import defaultdict
 import random
 import re
 import asyncio
+from tabulate import tabulate
 
 class Boggle_Instance():
     score = { 3: 1, 4: 1,
@@ -40,9 +41,9 @@ class Boggle_Instance():
     def format_board(self):
         return '\n\t'.join([' '.join(row).upper() for row in self.board])
 
-    def format_play(self, bot, top_scores, top_words):
-        scores = '/n'.join([f'{bot.get_user(player).name:>13}:{score:<3}:{top_words[player]:<14}'
-                             for player, score in top_scores.items()])
+    def format_play(self, bot, results):
+        scores = [[key, value['top'], value['score']] for key, value in results.items()]
+        scores.sort(key=lambda x: x[-1], reverse=True)
         return scores
 
     def format_score(self):
@@ -100,8 +101,7 @@ class Boggle_Instance():
             pass
 
     def round_over(self):
-        round_score = defaultdict(int)
-        round_words = defaultdict(str)
+        rounds = defaultdict(lambda: defaultdict(int))
 
         for player, words in self.plays.items():
             for word in words:
@@ -110,13 +110,17 @@ class Boggle_Instance():
                     score = self.score[length] or 11
                     self.scores[player] += score
 
-                    if len(round_words[player]) < length:
-                        round_words[player] = word
-                    round_score[player] += score
+                    try:
+                        if len(rounds[player]['top']) < length:
+                            rounds[player]['top'] = word
+                    except TypeError:
+                        rounds[player]['top'] = word
+                    
+                    rounds[player]['score'] += score
 
         self.board = None
         self.words = None
-        return round_score, round_words
+        return rounds
 
     def game_over(self):
         return self.scores
@@ -129,6 +133,12 @@ if __name__ == "__main__":
     for row in offline_boggle.board:
         print(row.upper())
 
+    input_ = ''
+    while input_ != 'q':
+        input_ = input()
+        offline_boggle.play(random.randint(0,9), input_)
+
     print(offline_boggle.plays)
-    offline_boggle.round_over()
+    results = offline_boggle.round_over()
+    print(offline_boggle.format_play(None, results))
     print(offline_boggle.scores)
