@@ -20,23 +20,5 @@ async def users(ctx):
     print(vars(ctx))
     await ctx.send(f'```{vars(ctx)}```')
 
-@bot.command()
-async def play(ctx, *, words):
-    print(vars(ctx))
-    print(words)
-
-@bot.command()
-async def test(ctx):
-    msg = 'Boggle! You have three minutes to play words.'
-    board = '''```css
-    A H I J K
-    E I T O C
-    D E A A X
-    G F T I E
-    E A O U Z```'''
-    await ctx.send(msg)
-    await ctx.send(board)
-
-
-
+bot.add_cog(games.Boggle(bot))
 bot.run(creds)
