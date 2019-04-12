@@ -42,7 +42,7 @@ class boggle(commands.Cog):
             self.games[id].shuffle_board()
             await ctx.send(f"Boggle! You have three minutes to find words.\n```css\n\t{self.games[id].format_board()}```")
 
-            await asyncio.sleep(30)
+            await asyncio.sleep(self.round_timer)
             results = self.games[id].round_over()
             data, formatted = self.games[id].format_play(self.bot, results)
             await self.message_table(ctx, f'Round {round} over. \nTop Ten', formatted[:10], headers=['[User', 'Top Word', 'Score]'])
@@ -70,3 +70,7 @@ class boggle(commands.Cog):
             return user_stats[3:]
         else:
             return None
+
+class acro(commands.Cog):
+    ''''''
+    pass
