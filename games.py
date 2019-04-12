@@ -4,6 +4,7 @@ import offline
 import loader
 
 from discord.ext import commands
+from tabulate import tabulate
 
 class Boggle(commands.Cog):
     round_timer = 180 #3 minutes
@@ -40,17 +41,23 @@ class Boggle(commands.Cog):
 
             await asyncio.sleep(30)
             results = self.games[id].round_over()
-            await self.message(ctx, 'Round over.', 
-            f'''```css\n{self.games[id].format_play(self.bot, results)}```''')
+            formatted = self.games[id].format_play(self.bot, results)
+            await self.message(ctx, 'Round over, here are the top ten:', 
+                            f'''```fix\n{tabulate(formatted, 
+                                            headers=['User', 'Top Word', 'Score'], 
+                                            tablefmt='fancy_grid')}```''')
             
-
-        await self.message(ctx, 'Game over.', f'''```css\n\t{self.games[id].format_score()}```''')
-        
+        results = self.games[id].game_over()
+        formatted = self.games[id].format_score(self.bot, results)
+        await self.message(ctx, f'Game over! Here are the top ten:', 
+                        f'''```bash\n{tabulate(formatted, 
+                                        headers=['User', 'Score'], 
+                                        tablefmt='fancy_grid')}```''')
+    
         del self.games[id]
 
     async def message(self, ctx, title, message):
-        await ctx.send(title)
-        await ctx.send(message)
+        await ctx.send(f'{title}\n{message}')
 
     @commands.command()
     async def active(self, ctx):

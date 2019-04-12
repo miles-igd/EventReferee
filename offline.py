@@ -2,7 +2,6 @@ from collections import defaultdict
 import random
 import re
 import asyncio
-from tabulate import tabulate
 
 class Boggle_Instance():
     score = { 3: 1, 4: 1,
@@ -42,12 +41,14 @@ class Boggle_Instance():
         return '\n\t'.join([' '.join(row).upper() for row in self.board])
 
     def format_play(self, bot, results):
-        scores = [[key, value['top'], value['score']] for key, value in results.items()]
+        scores = [[bot.get_user(key).name, value['top'], value['score']] for key, value in results.items()]
         scores.sort(key=lambda x: x[-1], reverse=True)
-        return scores
+        return scores[:10]
 
-    def format_score(self):
-        return self.scores
+    def format_score(self, bot, results):
+        scores = [[bot.get_user(key).name, value] for key, value in results.items()]
+        scores.sort(key=lambda x: x[-1], reverse=True)
+        return scores[:10]
 
     def shuffle_board(self):
         self.plays.clear()
@@ -96,7 +97,7 @@ class Boggle_Instance():
 
     def play(self, user, words):
         try:
-            self.plays[user].update(words.split(' '))
+            self.plays[user].update(words.lower().split(' '))
         except TypeError:
             pass
 
@@ -127,6 +128,14 @@ class Boggle_Instance():
 
 if __name__ == "__main__":
     import loader
+    class dummy_user():
+        def __init__(self):
+            self.name = 'Dummy'
+    class dummy_bot():
+        @staticmethod
+        def get_user(*args):
+            return dummy_user()
+    from tabulate import tabulate
     words = loader.load(loader.files['words'])
     offline_boggle = Boggle_Instance(None, words, Boggle_Instance.boggle5)
     offline_boggle.shuffle_board()
@@ -140,5 +149,10 @@ if __name__ == "__main__":
 
     print(offline_boggle.plays)
     results = offline_boggle.round_over()
-    print(offline_boggle.format_play(None, results))
-    print(offline_boggle.scores)
+    fmted = offline_boggle.format_play(dummy_bot, results)
+    print(tabulate(fmted, headers=['User', 'Top Word', 'Score'], tablefmt='fancy_grid'))
+
+    results = offline_boggle.game_over()
+    print(results)
+    fmted = offline_boggle.format_score(dummy_bot, results)
+    print(tabulate(fmted, headers=['User', 'Score'], tablefmt='fancy_grid'))
