@@ -40,15 +40,17 @@ class Boggle_Instance():
     def format_board(self):
         return '\n\t'.join([' '.join(row).upper() for row in self.board])
 
-    def format_play(self, bot, results):
-        scores = [[bot.get_user(key).name, value['top'], value['score']] for key, value in results.items()]
-        scores.sort(key=lambda x: x[-1], reverse=True)
-        return scores[:10]
+    def format_play(self, bot, results, limit=10):
+        data = [[key, bot.get_user(key), value['top'], value['score']] for key, value in results.items()]
+        data.sort(key=lambda x: x[-1], reverse=True)
+        table = [[l[1].name, l[2], l[3]] for l in data]
+        return data, table
 
-    def format_score(self, bot, results):
-        scores = [[bot.get_user(key).name, value] for key, value in results.items()]
-        scores.sort(key=lambda x: x[-1], reverse=True)
-        return scores[:10]
+    def format_score(self, bot, results, limit=10):
+        data = [[key, bot.get_user(key), value] for key, value in results.items()]
+        data.sort(key=lambda x: x[-1], reverse=True)
+        table = [[l[1].name, l[2]] for l in data]
+        return data, table
 
     def shuffle_board(self):
         self.plays.clear()
@@ -96,10 +98,7 @@ class Boggle_Instance():
                 yield nx, ny
 
     def play(self, user, words):
-        try:
-            self.plays[user].update(words.lower().split(' '))
-        except TypeError:
-            pass
+        self.plays[user].update(words.lower().split(' '))
 
     def round_over(self):
         rounds = defaultdict(lambda: defaultdict(int))
