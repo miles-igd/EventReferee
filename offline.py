@@ -23,8 +23,9 @@ class Boggle_Instance():
              'DHLNOR','EIIITT','CEILPT','EMOTTT','ENSSSU',
              'FIPRSY','GORRVW','HIPRRY','NOOTUW','OOOTTU',)
 
-    boggle4 = {'size': 4, 'dice': die16_}
-    boggle5 = {'size': 5, 'dice': die25}
+    types = {4: {'size': 4, 'dice': die16_},
+             5: {'size': 5, 'dice': die25}
+            }
 
     def __init__(self, id, word_list, config):
         self.id = id

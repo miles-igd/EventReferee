@@ -12,31 +12,28 @@ with open('_bot.creds', 'r') as file:
 async def on_ready():
     print(f'{bot.user.name}: {bot.user.id}')
 
-@bot.command()
-async def users(ctx):
-    print(bot.users)
-    print(bot.guilds)
-    print(vars(ctx))
-    await ctx.send(f'```{vars(ctx)}```')
-
-@bot.command()
+@bot.command(brief='Get the rules for a game.', description='Usage: !rules <game> (eg. !rules boggle)')
 async def rules(ctx, game:str = None):
     if not game:
         await ctx.send('```Usage: !rules <game> (eg. !rules boggle)```')
         return
     await ctx.send(f'```{game}```')
 
-@bot.command()
+@bot.command(brief='Get win/loss for a game.', description='Usage: !stats <game> (eg. !stats boggle)')
 async def stats(ctx, game:str = None):
     if not game:
         await ctx.send('```Usage: !stats <game> (eg. !stats boggle)```')
         return
-    cog = bot.get_cog(game.lower())
+    name = game.lower()
+    cog = bot.get_cog(name)
     if not cog:
         await ctx.send('```The game {game} does not exist.```')
         return
     stats = await cog.stats(ctx.author.id)
-    await ctx.send(f'```{stats}```')
+    if stats:
+        await ctx.send(f'```diff\n  {name.capitalize()} stats for {ctx.author.name}\n+ Wins: {stats[0]}\n- Losses: {stats[1]}```')
+    else:
+        await ctx.send(f'You have no stats for {name}.')
 
 bot.add_cog(games.boggle(bot))
 bot.run(creds)

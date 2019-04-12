@@ -21,8 +21,9 @@ class boggle(commands.Cog):
         if msg.channel.id in self.games and msg.author.bot is False:
             self.games[msg.channel.id].play(msg.author.id, msg.content)
 
-    @commands.command()
-    async def boggle(self, ctx, rounds:int = 3, config=offline.Boggle_Instance.boggle5):
+    @commands.command(brief='Start a boggle game!', description='Usage: !boggle <rounds(1-6)> <board_size(4-5)> (eg. !boggle 6 5)[Default: 3 rounds, board_size 5]')
+    async def boggle(self, ctx, rounds:int = 3, config:int = 5):
+        config = offline.Boggle_Instance.types[config]
         if ctx.guild is None:
             return None
         elif ctx.message.channel.id in self.games:
@@ -32,7 +33,7 @@ class boggle(commands.Cog):
             id = ctx.message.channel.id
 
         self.games[id] = offline.Boggle_Instance(id, self.words, config)
-        rounds = min(rounds, 6)
+        rounds = max(1, min(rounds, 6))
 
         for round in range(1,rounds+1):
             await ctx.send(f'Round {round} starting in 5 seconds...')
@@ -64,4 +65,8 @@ class boggle(commands.Cog):
         await ctx.send(f"{title}\n```ini\n{tabulate(message[:10], headers=headers, tablefmt='simple')}```")
 
     async def stats(self, userid):
-        return await self.db.get(userid)
+        user_stats = await self.db.get(userid)
+        if user_stats:
+            return user_stats[3:]
+        else:
+            return None

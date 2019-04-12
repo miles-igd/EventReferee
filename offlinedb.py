@@ -33,4 +33,4 @@ class DBHandler():
     async def get(self, userid):
         async with aiosqlite.connect(self.FNAME) as con:
             stats = await con.execute(f'SELECT * FROM {self.name} WHERE userid=?', (userid,))
-            return await stats.fetchall()
+            return await stats.fetchone()
