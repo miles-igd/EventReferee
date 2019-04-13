@@ -2,6 +2,7 @@ from collections import defaultdict
 import random
 import re
 import asyncio
+import string
 
 class Boggle_Instance():
     score = { 3: 1, 4: 1,
@@ -22,7 +23,6 @@ class Boggle_Instance():
              'CEIILT','CEIPST','DDLNOR','DHHLOR','IKLMQU',
              'DHLNOR','EIIITT','CEILPT','EMOTTT','ENSSSU',
              'FIPRSY','GORRVW','HIPRRY','NOOTUW','OOOTTU',)
-
     types = {4: {'size': 4, 'dice': die16_},
              5: {'size': 5, 'dice': die25}
             }
@@ -126,8 +126,42 @@ class Boggle_Instance():
     def game_over(self):
         return self.scores
 
+class Acro_Instance():
+    weights = [0.0639, 0.046, 0.0936, 0.0487, 0.0416, 
+               0.0464, 0.0316, 0.0331, 0.0357, 0.0127, 
+               0.0098, 0.0432, 0.0576, 0.0306, 0.0237, 
+               0.0853, 0.0044, 0.0531, 0.1078, 0.0512, 
+               0.0204, 0.0162, 0.0333, 0.0025, 0.0056, 
+               0.002]
+
+    def __init__(self, id, config):
+        self.id = id
+        self.config = config
+
+        self.acro = None
+
+        self.scores = defaultdict(int)
+        self.plays = defaultdict(set)
+
+    def new_acronym(self):
+        self.plays.clear()
+
+        size = random.randint(self.config['min'], self.config['max'])
+        acro = [random.choices(string.ascii_lowercase, weights=self.weights)[0] for _ in range(size)]
+
+
+        return acro
+
+    def play(self, user, words):
+        self.plays[user] = words
+
+    def round_over(self):
+        valid = {}
+        for player, acro in self.plays.items():
+            
+
 if __name__ == "__main__":
-    import loader
+    #import loader
     class dummy_user():
         def __init__(self):
             self.name = 'Dummy'
@@ -136,23 +170,12 @@ if __name__ == "__main__":
         def get_user(*args):
             return dummy_user()
     from tabulate import tabulate
-    words = loader.load(loader.files['words'])
-    offline_boggle = Boggle_Instance(None, words, Boggle_Instance.boggle5)
-    offline_boggle.shuffle_board()
-    for row in offline_boggle.board:
-        print(row.upper())
 
-    input_ = ''
-    while input_ != 'q':
-        input_ = input()
-        offline_boggle.play(random.randint(0,9), input_)
+    offline_acro = Acro_Instance(0, {'min': 3, 'max': 5})
+    a = offline_acro.new_acronym()
+    print(a)
 
-    print(offline_boggle.plays)
-    results = offline_boggle.round_over()
-    fmted = offline_boggle.format_play(dummy_bot, results)
-    print(tabulate(fmted, headers=['User', 'Top Word', 'Score'], tablefmt='fancy_grid'))
-
-    results = offline_boggle.game_over()
-    print(results)
-    fmted = offline_boggle.format_score(dummy_bot, results)
-    print(tabulate(fmted, headers=['User', 'Score'], tablefmt='fancy_grid'))
+    input_ = input()
+    offline_acro.play(0, input_)
+    print(offline_acro.plays)
+    
