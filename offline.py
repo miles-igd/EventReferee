@@ -1,4 +1,4 @@
-from collections import defaultdict
+from collections import defaultdict, Counter, OrderedDict
 import random
 import re
 import asyncio
@@ -54,7 +54,7 @@ class Boggle_Instance():
         return data, table
 
     def shuffle_board(self):
-        self.plays.clear()
+        self.plays = defaultdict(set)
 
         dice = self.config['dice']
         size = self.config['size']
@@ -134,31 +134,75 @@ class Acro_Instance():
                0.0204, 0.0162, 0.0333, 0.0025, 0.0056, 
                0.002]
 
+    types = {
+        5: {'min': 4, 'max': 5},
+        6: {'min': 4, 'max': 6},
+        7: {'min': 4, 'max': 7}
+    }
+
     def __init__(self, id, config):
         self.id = id
         self.config = config
 
         self.acro = None
+        self.votes = {}
 
         self.scores = defaultdict(int)
         self.plays = defaultdict(set)
+        self.amt = 0
+
+    def format_board(self):
+        return ' '.join(self.acro).upper()
+
+    def format_play(self, bot, emojis, results):
+        data = [[key, bot.get_user(key), emojis[i], ' '.join(value)] for i, (key, value) in enumerate(results.items())]
+        table = [[l[2], l[3]] for l in data]
+        return data, table
+
+    def format_score(self, bot, results, limit=10):
+        data = [[key, bot.get_user(key), value] for key, value in results.items()]
+        table = [[l[1].name, l[2]] for l in data]
+        return data, table
 
     def new_acronym(self):
-        self.plays.clear()
+        self.plays = defaultdict(set)
+        self.amt = 0
 
         size = random.randint(self.config['min'], self.config['max'])
         acro = [random.choices(string.ascii_lowercase, weights=self.weights)[0] for _ in range(size)]
 
-
-        return acro
+        self.acro = acro
 
     def play(self, user, words):
-        self.plays[user] = words
+        self.plays[user] = words.split(' ')
+
+    def check_valid(self, acro):
+        for letter, word in zip(self.acro, acro):
+            if letter != word.lower()[0]:
+                return False
+        
+        return True
 
     def round_over(self):
-        valid = {}
-        for player, acro in self.plays.items():
+        results = list(self.plays.items())
+        random.shuffle(results)
+        valid = {player: acro for player, acro in results if self.check_valid(acro)}
+
+        self.acro = None
+        self.plays = None
+        self.votes = {}
+        self.amt = len(valid)
+        return valid
             
+    def vote_over(self, data, msg, emojis):
+        reactions = {reaction.emoji: reaction.count for reaction in msg.reactions}
+        counts = Counter({result[1].name: reactions[result[2]] for result in data})
+        print(data)
+        print(msg.reactions)
+        print(max(msg.reactions, key=lambda x: x.count))
+        #counts = Counter(self.votes.values())
+        
+        return counts
 
 if __name__ == "__main__":
     #import loader
@@ -171,11 +215,22 @@ if __name__ == "__main__":
             return dummy_user()
     from tabulate import tabulate
 
-    offline_acro = Acro_Instance(0, {'min': 3, 'max': 5})
+    offline_acro = Acro_Instance(0, {'min': 4, 'max': 6})
     a = offline_acro.new_acronym()
     print(a)
 
     input_ = input()
-    offline_acro.play(0, input_)
-    print(offline_acro.plays)
-    
+    offline_acro.play(random.randint(1,128), input_)
+    input_ = input()
+    offline_acro.play(random.randint(1,128), input_)    
+    input_ = input()
+    offline_acro.play(random.randint(1,128), input_)
+    results = offline_acro.round_over()
+    print(results)
+
+    input_ = input()
+    print(offline_acro.vote(2, input_))
+    input_ = input()
+    print(offline_acro.vote(1, input_))
+
+    results = offline_acro.vote_over(results)

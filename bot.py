@@ -15,11 +15,17 @@ class Main(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.games = {}
+        self.active = {}
 
     @commands.Cog.listener()
     async def on_message(self, msg):
-        if msg.channel.id in self.games and msg.author.bot is False:
+        if msg.author.bot:
+            return
+        if msg.channel.id in self.games:
             self.games[msg.channel.id].play(msg.author.id, msg.content)
+        elif isinstance(msg.channel, discord.DMChannel):
+            for game in self.active.values():
+                game.play(msg.author.id, msg.content)
 
     @commands.command(brief='Get the rules for a game.', description='Usage: !rules <game> (eg. !rules boggle)')
     async def rules(self, ctx, game:str = None):
@@ -54,4 +60,5 @@ with open('_bot.creds', 'r') as file:
 
 bot.add_cog(Main(bot))
 bot.add_cog(games.boggle(bot))
+bot.add_cog(games.acro(bot))
 bot.run(creds)
