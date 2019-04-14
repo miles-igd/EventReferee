@@ -176,6 +176,9 @@ class Acro_Instance():
     def play(self, user, words):
         self.plays[user] = words.split(' ')
 
+    def vote(self, user, vote):
+        self.votes[user] = vote
+
     def check_valid(self, acro):
         for letter, word in zip(self.acro, acro):
             if letter != word.lower()[0]:
@@ -194,15 +197,14 @@ class Acro_Instance():
         self.amt = len(valid)
         return valid
             
-    def vote_over(self, data, msg, emojis):
-        reactions = {reaction.emoji: reaction.count for reaction in msg.reactions}
-        counts = Counter({result[1].name: reactions[result[2]] for result in data})
+    def vote_over(self, data, emojis):
+        reactions = {user: emoji for user, emoji in self.votes.items() if emoji in emojis}
+        counts = Counter(reactions)
+        print(counts)
         print(data)
-        print(msg.reactions)
-        print(max(msg.reactions, key=lambda x: x.count))
         #counts = Counter(self.votes.values())
         
-        return counts
+        return reactions
 
 if __name__ == "__main__":
     #import loader

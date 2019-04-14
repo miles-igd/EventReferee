@@ -13,7 +13,18 @@ class NotInCog(Exception):
 async def message_table(ctx, title, message, headers=None):
     return await ctx.send(f"{title}\n```ini\n{tabulate(message[:10], headers=headers, tablefmt='simple')}```")
 
-class boggle(commands.Cog):
+class Base():
+    def __init__(self):
+        self.db = None
+
+    async def stats(self, userid):
+        user_stats = await self.db.get(userid)
+        if user_stats:
+            return user_stats[3:]
+        else:
+            return None
+
+class boggle(commands.Cog, Base):
     '''Boggle is a word game of 16 or 25 dice.
     There are letters on the 6 sides of the die.
     
@@ -84,18 +95,12 @@ class boggle(commands.Cog):
     
         del self.Main.games[id]
 
-    async def stats(self, userid):
-        user_stats = await self.db.get(userid)
-        if user_stats:
-            return user_stats[3:]
-        else:
-            return None
-
-class acro(commands.Cog):
+class acro(commands.Cog, Base):
     '''Acro is a word game involving acronyms.
     Every round an acronym (eg. A L K I) is given and players will have to create a phrase out of the acronym.
     
-    At the end of each round, anyone can vote for which phrase they liked the best and vote for them by DM'ing me !vote #
+    At the end of each round, anyone can vote for which phrase they liked the best by reacting to the emoji.
+    Only the last react will count. There is no multiple voting. Feel free to obfuscate your voting with this.
     
     The phrase with the most votes gets 5 points, or if tied, 3 points. You can only get points if you have more than 1 vote!
     The winner at the end of the game is the player with the most points.
@@ -146,10 +151,11 @@ class acro(commands.Cog):
             msg = await message_table(ctx, f'Voting phase! \nYou have 2 minutes to vote!', formatted, headers=['[React!', 'Phrase]'])
             for emoji in truncated:
                 await msg.add_reaction(emoji)
+            self.Main.voting_blocs[id] = self.Main.games[id]
             await asyncio.sleep(20)
 
-            msg = await msg.channel.fetch_message(msg.id)
-            results = self.Main.games[id].vote_over(data, msg, truncated)
+            del self.Main.voting_blocs[id]
+            results = self.Main.games[id].vote_over(data, truncated)
             await ctx.send(f'{results}')
 
         del self.Main.games[id]

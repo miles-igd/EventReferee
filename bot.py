@@ -5,12 +5,8 @@ import inspect
 
 from discord.ext import commands
 
-<<<<<<< HEAD
-=======
 bot = commands.Bot(command_prefix='!', description='Referee Core Bot.')
->>>>>>> 50feb505a69f206276aa8ba6b8bdcba8bbfbee05
 
-bot = commands.Bot(command_prefix='!', description='Referee Core Bot.')
 @bot.event
 async def on_ready():
     print(f'{bot.user.name}: {bot.user.id}')
@@ -20,6 +16,7 @@ class Main(commands.Cog):
         self.bot = bot
         self.games = {}
         self.active = {}
+        self.voting_blocs = {}
 
     @commands.Cog.listener()
     async def on_message(self, msg):
@@ -30,6 +27,14 @@ class Main(commands.Cog):
         elif isinstance(msg.channel, discord.DMChannel):
             for game in self.active.values():
                 game.play(msg.author.id, msg.content)
+
+    @commands.Cog.listener()
+    async def on_raw_reaction_add(self, reaction):
+        if self.bot.user.id == reaction.user_id:
+            return
+        if reaction.channel_id in self.voting_blocs:
+            print(reaction.user_id, reaction.emoji.name)
+            self.voting_blocs[reaction.channel_id].vote(reaction.user_id, reaction.emoji.name)
 
     @commands.command(brief='Get the rules for a game.', description='Usage: !rules <game> (eg. !rules boggle)')
     async def rules(self, ctx, game:str = None):
