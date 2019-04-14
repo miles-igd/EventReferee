@@ -1,7 +1,8 @@
-from collections import defaultdict
+from collections import defaultdict, Counter, OrderedDict
 import random
 import re
 import asyncio
+import string
 
 class Boggle_Instance():
     score = { 3: 1, 4: 1,
@@ -22,7 +23,6 @@ class Boggle_Instance():
              'CEIILT','CEIPST','DDLNOR','DHHLOR','IKLMQU',
              'DHLNOR','EIIITT','CEILPT','EMOTTT','ENSSSU',
              'FIPRSY','GORRVW','HIPRRY','NOOTUW','OOOTTU',)
-
     types = {4: {'size': 4, 'dice': die16_},
              5: {'size': 5, 'dice': die25}
             }
@@ -54,7 +54,7 @@ class Boggle_Instance():
         return data, table
 
     def shuffle_board(self):
-        self.plays.clear()
+        self.plays = defaultdict(set)
 
         dice = self.config['dice']
         size = self.config['size']
@@ -126,8 +126,86 @@ class Boggle_Instance():
     def game_over(self):
         return self.scores
 
+class Acro_Instance():
+    weights = [0.0639, 0.046, 0.0936, 0.0487, 0.0416, 
+               0.0464, 0.0316, 0.0331, 0.0357, 0.0127, 
+               0.0098, 0.0432, 0.0576, 0.0306, 0.0237, 
+               0.0853, 0.0044, 0.0531, 0.1078, 0.0512, 
+               0.0204, 0.0162, 0.0333, 0.0025, 0.0056, 
+               0.002]
+
+    types = {
+        5: {'min': 4, 'max': 5},
+        6: {'min': 4, 'max': 6},
+        7: {'min': 4, 'max': 7}
+    }
+
+    def __init__(self, id, config):
+        self.id = id
+        self.config = config
+
+        self.acro = None
+        self.votes = {}
+
+        self.scores = defaultdict(int)
+        self.plays = defaultdict(set)
+        self.amt = 0
+
+    def format_board(self):
+        return ' '.join(self.acro).upper()
+
+    def format_play(self, bot, emojis, results):
+        data = [[key, bot.get_user(key), emojis[i], ' '.join(value)] for i, (key, value) in enumerate(results.items())]
+        table = [[l[2], l[3]] for l in data]
+        return data, table
+
+    def format_score(self, bot, results, limit=10):
+        data = [[key, bot.get_user(key), value] for key, value in results.items()]
+        table = [[l[1].name, l[2]] for l in data]
+        return data, table
+
+    def new_acronym(self):
+        self.plays = defaultdict(set)
+        self.amt = 0
+
+        size = random.randint(self.config['min'], self.config['max'])
+        acro = [random.choices(string.ascii_lowercase, weights=self.weights)[0] for _ in range(size)]
+
+        self.acro = acro
+
+    def play(self, user, words):
+        self.plays[user] = words.split(' ')
+
+    def check_valid(self, acro):
+        for letter, word in zip(self.acro, acro):
+            if letter != word.lower()[0]:
+                return False
+        
+        return True
+
+    def round_over(self):
+        results = list(self.plays.items())
+        random.shuffle(results)
+        valid = {player: acro for player, acro in results if self.check_valid(acro)}
+
+        self.acro = None
+        self.plays = None
+        self.votes = {}
+        self.amt = len(valid)
+        return valid
+            
+    def vote_over(self, data, msg, emojis):
+        reactions = {reaction.emoji: reaction.count for reaction in msg.reactions}
+        counts = Counter({result[1].name: reactions[result[2]] for result in data})
+        print(data)
+        print(msg.reactions)
+        print(max(msg.reactions, key=lambda x: x.count))
+        #counts = Counter(self.votes.values())
+        
+        return counts
+
 if __name__ == "__main__":
-    import loader
+    #import loader
     class dummy_user():
         def __init__(self):
             self.name = 'Dummy'
@@ -136,23 +214,23 @@ if __name__ == "__main__":
         def get_user(*args):
             return dummy_user()
     from tabulate import tabulate
-    words = loader.load(loader.files['words'])
-    offline_boggle = Boggle_Instance(None, words, Boggle_Instance.boggle5)
-    offline_boggle.shuffle_board()
-    for row in offline_boggle.board:
-        print(row.upper())
 
-    input_ = ''
-    while input_ != 'q':
-        input_ = input()
-        offline_boggle.play(random.randint(0,9), input_)
+    offline_acro = Acro_Instance(0, {'min': 4, 'max': 6})
+    a = offline_acro.new_acronym()
+    print(a)
 
-    print(offline_boggle.plays)
-    results = offline_boggle.round_over()
-    fmted = offline_boggle.format_play(dummy_bot, results)
-    print(tabulate(fmted, headers=['User', 'Top Word', 'Score'], tablefmt='fancy_grid'))
-
-    results = offline_boggle.game_over()
+    input_ = input()
+    offline_acro.play(random.randint(1,128), input_)
+    input_ = input()
+    offline_acro.play(random.randint(1,128), input_)    
+    input_ = input()
+    offline_acro.play(random.randint(1,128), input_)
+    results = offline_acro.round_over()
     print(results)
-    fmted = offline_boggle.format_score(dummy_bot, results)
-    print(tabulate(fmted, headers=['User', 'Score'], tablefmt='fancy_grid'))
+
+    input_ = input()
+    print(offline_acro.vote(2, input_))
+    input_ = input()
+    print(offline_acro.vote(1, input_))
+
+    results = offline_acro.vote_over(results)
