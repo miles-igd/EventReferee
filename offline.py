@@ -133,7 +133,6 @@ class Acro_Instance():
                0.0853, 0.0044, 0.0531, 0.1078, 0.0512, 
                0.0204, 0.0162, 0.0333, 0.0025, 0.0056, 
                0.002]
-
     types = {
         5: {'min': 4, 'max': 5},
         6: {'min': 4, 'max': 6},
@@ -155,8 +154,8 @@ class Acro_Instance():
         return ' '.join(self.acro).upper()
 
     def format_play(self, bot, emojis, results):
-        data = [[key, bot.get_user(key), emojis[i], ' '.join(value)] for i, (key, value) in enumerate(results.items())]
-        table = [[l[2], l[3]] for l in data]
+        data = {emojis[i]:[bot.get_user(key), ' '.join(value)] for i, (key, value) in enumerate(results.items())}
+        table = [(key, value[1]) for key, value in data.items()]
         return data, table
 
     def format_score(self, bot, results, limit=10):
@@ -198,13 +197,26 @@ class Acro_Instance():
         return valid
             
     def vote_over(self, data, emojis):
+        if not self.votes:
+            return None
+
         reactions = {user: emoji for user, emoji in self.votes.items() if emoji in emojis}
-        counts = Counter(reactions)
-        print(counts)
-        print(data)
-        #counts = Counter(self.votes.values())
+        counts = Counter(reactions.values())
+        votes = counts.most_common()
+
+        if votes[0][1] == 0:
+            return None
         
-        return reactions
+        winners = [data[emoji] for emoji, count in counts.items() if count == votes[0][1]]
+        
+        if len(winners) > 1:
+            for winner in winners:
+                self.scores[winner[0].id] += 3
+        else:
+            self.scores[winners[0][0].id] += 5
+        
+        print(winners, votes)
+        return winners, votes
 
 if __name__ == "__main__":
     #import loader

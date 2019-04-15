@@ -11,21 +11,46 @@ bot = commands.Bot(command_prefix='!', description='Referee Core Bot.')
 async def on_ready():
     print(f'{bot.user.name}: {bot.user.id}')
 
+class ActiveGame(Exception):
+    pass
+
 class Main(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.games = {}
-        self.active = {}
-        self.voting_blocs = {}
+        self.active = defaultdict(set)
+        self.flags = defaultdict(set)
+
+    async def register(self, instance):
+        if instance.id in self.games:
+            raise ActiveGame('An instance in this channel is already running. If not, try running !reset in this channel.')
+
+        self.games[instance.id] = instance
+
+        if instance.name in ['acro']:
+            self.games[instance.name].add(instance)
+
+    async def unregister(self, instance):
+        del self.games[instance.id]
+
+        if instance.name in ['acro']:
+            self.games[instance.name].remove(instance)
+
+    async def add_flag(self, instance, flag):
+        self.flags[flag].add(instance.id)
+
+    async def remove_flag(self, instance, flag):
+        self.flags[flag].remove(instance.id)
+
 
     @commands.Cog.listener()
     async def on_message(self, msg):
-        if msg.author.bot:
-            return
+        if msg.content == 'stop': await self.bot.logout()
+        if msg.author.bot: return
         if msg.channel.id in self.games:
             self.games[msg.channel.id].play(msg.author.id, msg.content)
         elif isinstance(msg.channel, discord.DMChannel):
-            for game in self.active.values():
+            for game in self.active['acro']:
                 game.play(msg.author.id, msg.content)
 
     @commands.Cog.listener()
@@ -33,7 +58,6 @@ class Main(commands.Cog):
         if self.bot.user.id == reaction.user_id:
             return
         if reaction.channel_id in self.voting_blocs:
-            print(reaction.user_id, reaction.emoji.name)
             self.voting_blocs[reaction.channel_id].vote(reaction.user_id, reaction.emoji.name)
 
     @commands.command(brief='Get the rules for a game.', description='Usage: !rules <game> (eg. !rules boggle)')

@@ -24,6 +24,56 @@ class Base():
         else:
             return None
 
+class Games(commands.Cog):
+    '''Current available games:
+    -Boggle
+    -Acro'''
+    def __init__(self, bot):
+        self.bot = bot
+        self.Main = self.bot.get_cog('Main')
+
+    @commands.command(brief='Start a boggle game!', description='Valid configurations: \n{rounds:[1,32], timer:[1,600], size:[3,9]}')
+    async def boggle(self, ctx, *, config:str = None):
+        '''Boggle is a word game of 16 or 25 dice.
+        There are letters on the 6 sides of the die.
+        
+        A round of boggle starts with the shuffling and rolling of the dice into a 4x4 or 5x5 square.
+        Players must find words formed on the board.
+        Words are formed by connecting letters on the board with their adjacent or diagonal letters.
+        
+        Words are scored by their length, the longer the word, the larger the score!
+        3,4 = 1 pts
+        5 = 2 pts
+        6 = 3 pts
+        7 = 5 pts
+        8+ = 11pts
+        
+        In the 5x5 version, 3 letter words are disallowed.
+        
+        After a set of rounds, the player with the most points is the winner.'''
+        try:
+            instance = instances.BoggleInstance.make(ctx.message.channel.id, config)
+        except instance.ConfigError as e:
+            ctx.send(e)
+            return
+        except Exception as e:
+            ctx.send(f'An unexpected error ({e}) occured, if this error persists please contact the author.')
+            return
+
+        #register game to Main registry
+        try:
+            self.Main.register(instance)
+        except ActiveGame as e:
+            ctx.send(e)
+            return
+
+        
+
+
+
+
+
+
 class boggle(commands.Cog, Base):
     '''Boggle is a word game of 16 or 25 dice.
     There are letters on the 6 sides of the die.
@@ -51,7 +101,7 @@ class boggle(commands.Cog, Base):
         self.db = offlinedb.DBHandler(self.__class__.__name__)
 
     @commands.command(brief='Start a boggle game!', description='Usage: !boggle <rounds(1-6)> <board_size(4-5)> (eg. !boggle 6 5)[Default: 3 rounds, board_size 5]')
-    async def boggle(self, ctx, rounds:int = 3, config:int = 5):
+    async def oboggle(self, ctx, rounds:int = 3, config:int = 5):
         try:
             config = offline.Boggle_Instance.types[config]
         except KeyError:
@@ -106,11 +156,7 @@ class acro(commands.Cog, Base):
     The winner at the end of the game is the player with the most points.
     '''
     round_timer = 120 #2 minutes
-    emojis = '''🍕🍔🍟🌭🍿🥓🥚🥞🍳🍞🥐🥨🧀🥗🥪🌮🌯🥫🍖🍠🥡🍙🍚🍣🍤🍦🍩🍪🍰🍫🍭🍮🍼🍸🥤🏺🥝
-    🍇🍈🍉🍊🍋🍌🍍🍎🍑🍒🍓🍅🍆🌽🥕🌰🥜🎈🎆✨🎉🎊🎃🎏🎎🎐🎑🎀🎁🎠🎡🎢🎪🎭🎨🛒👓⚽⚾🏀🏐
-    🏈🏉🎱🎳🥌⛳🎣🛶🏑🏏🏓🎾🎯🥊🎲🔮📣🔔🎵🎶🎤🎧📯🥁🎷🎸🎹🎺🎻📻🔑🔨📿🏹🔗🔪💣🔫📞📟📠
-    📱🔋🗿🔌💻💽💾💿📀🎥🎬📡📼📹📷'''
-
+    emojis = '🍕🍔🍟🌭🍿🥓🥚🥞🍳🍞🥐🥨🧀🥗🥪🌮🌯🥫🍖🍠🥡🍙🍚🍣🍤🍦🍩🍪🍰🍫🍭🍮🍼🍸🥤🏺🥝🍇🍈🍉🍊🍋🍌🍍🍎🍑🍒🍓🍅🍆🌽🥕🌰🥜🎈🎆✨🎉🎊🎃🎏🎎🎐🎑🎀🎁🎠🎡🎢🎪🎭🎨🛒👓⚽⚾🏀🏐🏈🏉🎱🎳🥌⛳🎣🛶🏑🏏🏓🎾🎯🥊🎲🔮📣🔔🎵🎤🎧📯🥁🎷🎸🎹🎺🎻📻🔑🔨📿🏹🔗🔪💣🔫📞📟📠🗿🔌💻💽💾💿📀🎥🎬📡📼📹📷'
 
     def __init__(self, bot):
         self.bot = bot
@@ -118,7 +164,7 @@ class acro(commands.Cog, Base):
         self.db = offlinedb.DBHandler(self.__class__.__name__)
 
     @commands.command(brief='Start an acro game!')
-    async def acro(self, ctx, rounds:int = 3, config:int = 5):
+    async def oacro(self, ctx, rounds:int = 3, config:int = 5):
         try:
             config = offline.Acro_Instance.types[config]
         except KeyError:
@@ -148,6 +194,9 @@ class acro(commands.Cog, Base):
 
             truncated = self.emojis[:len(results)]
             data, formatted = self.Main.games[id].format_play(self.bot, truncated, results)
+            if len(data) == 0:
+                await ctx.send(f"Round over. No one played? 😢")
+                continue
             msg = await message_table(ctx, f'Voting phase! \nYou have 2 minutes to vote!', formatted, headers=['[React!', 'Phrase]'])
             for emoji in truncated:
                 await msg.add_reaction(emoji)
@@ -156,7 +205,9 @@ class acro(commands.Cog, Base):
 
             del self.Main.voting_blocs[id]
             results = self.Main.games[id].vote_over(data, truncated)
-            await ctx.send(f'{results}')
+            #if results:
+            #    data, formatted = self.Main.games[id].format_votes(self.bot, data, results)
+            #    await message_table(ctx, f'Voting phase! \nYou have 2 minutes to vote!', formatted, headers=['[React!', 'Phrase]'])
 
         del self.Main.games[id]
         del self.Main.active[id]
