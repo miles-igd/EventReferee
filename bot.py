@@ -22,7 +22,7 @@ class Main(commands.Cog):
         self.flags = defaultdict(set)
 
     async def register(self, instance):
-        if instance.id in self.games:
+        if instance.ctx.id in self.games:
             raise ActiveGame('An instance in this channel is already running. If not, try running !reset in this channel.')
 
         self.games[instance.id] = instance
@@ -41,7 +41,6 @@ class Main(commands.Cog):
 
     async def remove_flag(self, instance, flag):
         self.flags[flag].remove(instance.id)
-
 
     @commands.Cog.listener()
     async def on_message(self, msg):

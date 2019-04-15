@@ -51,27 +51,42 @@ class Games(commands.Cog):
         In the 5x5 version, 3 letter words are disallowed.
         
         After a set of rounds, the player with the most points is the winner.'''
+        await self.start('boggle', ctx, config)
+
+
+    async def start(self, game, ctx, config:str = None):
         try:
-            instance = instances.BoggleInstance.make(ctx.message.channel.id, config)
+            instance = instances.games[game].make(ctx, config)
         except instance.ConfigError as e:
             ctx.send(e)
             return
         except Exception as e:
-            ctx.send(f'An unexpected error ({e}) occured, if this error persists please contact the author.')
+            ctx.send(f'''An unexpected error ({e}) occured, 
+            if this error persists please contact the author.''')
             return
 
         #register game to Main registry
         try:
-            self.Main.register(instance)
+            self.Main.register(ctx.message.channel.id)
         except ActiveGame as e:
             ctx.send(e)
             return
 
+        #await messages, until rounds are over.
+        try:
+            async for message in instance.start():
+                await ctx.send(message)
+        except Exception as e:
+            ctx.send(f'''An unexpected error ({e}) occured, 
+            if this error persists please contact the author.''')
+            instance.reset() #This will unregister and unflag for you
+            return
+
+        #game end
+        await ctx.send(await instance.stop())
         
-
-
-
-
+        #unregister game from Main registry
+        self.Main.unregister(ctx.message.channel.id)
 
 
 class boggle(commands.Cog, Base):

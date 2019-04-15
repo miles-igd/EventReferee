@@ -74,7 +74,7 @@ class Boggle_Instance():
         words = set(word for word in self.word_list if bogglable(word))
         prefixes = set(word[:i] for word in words for i in range(2, len(word)+1))
 
-        return set([word for word in self.solve(board, prefixes, words)])
+        return set(word for word in self.solve(board, prefixes, words))
         
     def solve(self, board, prefixes, words):
         for y, row in enumerate(board):
@@ -102,7 +102,7 @@ class Boggle_Instance():
         self.plays[user].update(words.lower().split(' '))
 
     def round_over(self):
-        rounds = defaultdict(lambda: defaultdict(int))
+        rounds = defaultdict(lambda: {'top': '', 'score': 0})
 
         for player, words in self.plays.items():
             for word in words:
