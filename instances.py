@@ -141,7 +141,7 @@ class BoggleInstance(Instance):
             flat = ''.join(random.choice(dice[choice]) for choice in distribution).lower()
             board = tuple(flat[i*self.size:i*self.size+self.size] for i in range(self.size))
         else:
-            raise NotImplementedError 
+            raise NotImplementedError('This config is not yet implemented.')
 
         self.words = self.solve_board(flat, board)
         self.board = board
