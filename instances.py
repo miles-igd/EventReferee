@@ -175,8 +175,8 @@ class BoggleInstance(Instance):
         data = [[user, score] for user, key, score in self.get_users(ordered)]
         winners = {user.name for user, score in data if score == ordered[0][1]}
 
-        await sql.DBHandler.incr('win', ordered[:len(winners)])
-        await sql.DBHandler.incr('loss', ordered[len(winners):])
+        await sql.DBHandler.incr(self.name, 'wins', ordered[:len(winners)])
+        await sql.DBHandler.incr(self.name, 'losses', ordered[len(winners):])
 
         return data, f"Congratz to the winner(s), {', '.join(winners)}. 🎉"
 

@@ -49,14 +49,27 @@ class DBHandler:
     @classmethod
     def startup(cls):
         for game in cls.games.values():
-            with sqlite3.connect(f'database/{game}') as con:
-                con.execute(f'''CREATE TABLE IF NOT EXISTS winloss
-                (userid INTEGER PRIMARY KEY, name TEXT, discriminator TEXT, 
-                wins INTEGER, losses INTEGER, winloss REAL)''')
+            with sqlite3.connect(f'db/{game}') as con:
+                con.execute(f'''CREATE TABLE IF NOT EXISTS statistics
+                (userid INTEGER PRIMARY KEY, wins INTEGER, losses INTEGER)''')
 
     @classmethod
     async def incr(cls, name, col, users):
-        async with aiosqlite.connect(cls.games[name]) as con:
+        async with aiosqlite.connect(f'db/{cls.games[name]}') as con:
+            for user in users:
+                try: user = user[0] 
+                except IndexError: pass
+                row = await con.execute(f'''SELECT * FROM statistics
+                                            WHERE userid=?''', (user,))
+                if await row.fetchone():
+                    await con.execute(f'''UPDATE statistics SET {col} = {col} + 1 
+                                        WHERE userid=?''', (user,))
+                else:
+                    await con.execute('''INSERT INTO statistics (userid, wins, losses)
+                                     VALUES (?, ?, ?)''', 
+                                    (user, int(col == 'wins'), int(col == 'losses')))
+                await con.commit()
+
             
 
 if __name__ == '__main__':
