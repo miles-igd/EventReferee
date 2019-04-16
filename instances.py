@@ -1,28 +1,44 @@
 import asyncio
 import data
+import formatting
 import json
 import math
 import random
 import re
+import sql
+import traceback
 
-from collections import defaultdict, Counter
-from util import *
+from collections import defaultdict, Counter, OrderedDict
+from util import bounds
 
 class ConfigError(Exception):
     pass
 
+class NotEnoughPlayers(Exception):
+    pass
+
 class Instance():
     @classmethod
-    def make(cls, id, config):
+    def make(cls, ctx, bot, config=None):
         try: 
             return cls(ctx, bot, json.loads(config))
-        except ValueError:
+        except TypeError:
             return cls(ctx, bot)
 
     @staticmethod
-    async def(round_, timer=5):
-        yield f'Round {round_} is starting in {timer} seconds...'
-        await asyncio.sleep(timer)
+    def warning(round_, timer=5):
+        return f'Round {round_} is starting in {timer} seconds...', timer
+
+    def get_users(self, iterable):
+        for key, val in iterable:
+            if key in self.bot.cache.mem['user']:
+                yield self.bot.cache.mem['user'][key], key, val
+            else:
+                user = self.bot.get_user(key)
+                print(f"Creating {key} in cache :) will delete after 1800secs")
+                self.bot.cache.mem['user'][key] = user
+                self.bot.loop.create_task(self.bot.cache.t_delete('user', key))
+                yield user, key, val
 
 class BoggleInstance(Instance):
     '''
@@ -57,7 +73,7 @@ class BoggleInstance(Instance):
              'FIPRSY','GORRVW','HIPRRY','NOOTUW','OOOTTU')
     explicit = {4: die16, 5: die25}
 
-    defaults = {"rounds": 5,
+    defaults = {"rounds": 3,
                 "timer": 180,
                 "size": 5}
 
@@ -65,53 +81,78 @@ class BoggleInstance(Instance):
         self.ctx = ctx
         self.bot = bot
         
-        self.rounds = bounds(1, 16, config.get(rounds, self.defaults['rounds']))
-        self.timer =  bounds(10, 600, config.get(timer, self.defaults['timer']))
-        self.size =  bounds(3, 9, config.get(size, self.defaults['size']))
+        self.rounds = bounds(1, 16, config.get('rounds', self.defaults['rounds']))
+        self.timer =  bounds(10, 600, config.get('timer', self.defaults['timer']))
+        self.size =  bounds(3, 9, config.get('size', self.defaults['size']))
 
         self.board = None
         self.words = None
         self.scores = defaultdict(int)
         self.plays = defaultdict(set)
 
+    async def reset(self):
+        try:
+            await self.bot.unregister(self)
+        except Exception:
+            print(traceback.format_exc())
+        
+
     async def start(self):
-        yield "A game of boggle is starting! See !rules boggle if you wish to see the rules."
+        yield "A game of boggle is starting! See !help boggle if you wish to see the rules."
         for round_ in range(1,self.rounds+1):
-            yield self.warning(round_)
-            await self.new_round()
-            yield header_code(f'Boggle! You have {format_sec2min(self.timer)} minutes to find words.', 
-                              'css',
-                              self.format_board())
+            warn, timer = self.warning(round_)
+            yield warn
+            await asyncio.sleep(timer)
+            self.new_round()
+            yield formatting.header_code(f'Boggle! You have {formatting.sec2min(self.timer)} minutes to find words.', 
+                                        formatting.board(self.board),
+                                        'css',)
             await asyncio.sleep(self.timer)
-            table = await self.round_over()
-            yield header_code('',
-                              'css',
-                              table)
+            table = self.round_over()
+            yield formatting.header_code('Round over.',
+                                        formatting.table(table, ['[Users', 'Best Word', 'Score]']),
+                                        'ini')
+            await asyncio.sleep(timer)
 
+        try:
+            table, winners = await self.game_over()
+        except NotEnoughPlayers:
+            table, winners = [], 'Not enough players? 😥'
+        yield formatting.header_code(f'Game over. {winners}',
+                                    formatting.table(table, ['[Users', 'Score]']),
+                                    'ini')
 
-    async def new_round(self):
+    async def stop(self):
+        '''To be used to stop, not necessarily end.'''
+        return
+
+    def play(self, userid, content):
+        self.plays[userid].update(content.lower().split(' '))
+
+    def new_round(self):
         self.plays = defaultdict(set)
 
-        if self.size in explicit:
-            distribution = [range(len(explicit[self.size]))]
+        if self.size in self.explicit:
+            dice = self.explicit[self.size]
+
+            distribution = list(range(len(dice)))
             random.shuffle(distribution)
 
             flat = ''.join(random.choice(dice[choice]) for choice in distribution).lower()
-            board = tuple(flat[i*size:i*size+size] for i in range(self.size))
+            board = tuple(flat[i*self.size:i*self.size+self.size] for i in range(self.size))
         else:
             raise NotImplementedError 
 
-        self.words = await self.solve_board(flat, board)
+        self.words = self.solve_board(flat, board)
         self.board = board
 
-    async def round_over(self):
+    def round_over(self):
         rounds = defaultdict(lambda: {'top': '', 'score': 0})
 
         for player, words in self.plays.items():
             for word in words:
-                await asyncio.sleep(0)
                 if word in self.words:
-                    score = self.score(len(word)) or 11
+                    score = self.score[len(word)] or 11
 
                     if len(rounds[player]['top']) < len(word):
                         rounds[player]['top'] = word
@@ -121,36 +162,47 @@ class BoggleInstance(Instance):
         self.board = None
         self.words = None
 
-        data = []
-        return rounds
+        data = [[user, rounds[key]['top'], rounds[key]['score']] for user, key, val in self.get_users(rounds.items())]
+        data.sort(key=lambda x: x[-1], reverse=True)
+        return data
 
+    async def game_over(self):
+        if len(self.scores) < 1:
+            raise NotEnoughPlayers
+        counts = Counter(self.scores)
+        ordered = counts.most_common()
+
+        data = [[user, score] for user, key, score in self.get_users(ordered)]
+        winners = {user.name for user, score in data if score == ordered[0][1]}
+
+        await sql.DBHandler.incr('win', ordered[:len(winners)])
+        await sql.DBHandler.incr('loss', ordered[len(winners):])
+
+        return data, f"Congratz to the winner(s), {', '.join(winners)}. 🎉"
 
     #Game-specific helper function
-    async def solve_board(self, letters, board)
+    def solve_board(self, letters, board):
         bogglable = re.compile(f'[{"".join(set(letters))}]{{3,}}$', re.I).match
 
         words = set(word for word in data.words if bogglable(word))
         prefixes = set(word[:i] for word in words for i in range(2, len(word)+1))
 
-        return set(await word async for word in self.solve(board, prefixes, words))
+        return set(word for word in self.solve(board, prefixes, words))
 
-    async def solve(self, board, prefixes, words):
+    def solve(self, board, prefixes, words):
         for y, row in enumerate(board):
             for x, letter in enumerate(row):
-                async for result in self.extending(letter, board, prefixes, words, ((x, y),)):
-                    await asyncio.sleep(0)
+                for result in self.extending(letter, board, prefixes, words, ((x, y),)):
                     yield result
                 
-    async extending(self, prefix, board, prefixes, words, path):
+    def extending(self, prefix, board, prefixes, words, path):
         if prefix in words:
-            await asyncio.sleep(0)
             yield prefix #(prefix, path)
-        for (nx, ny) in self.neighbors(*path[-1], self.config['size']):
+        for (nx, ny) in self.neighbors(*path[-1], self.size):
             if (nx, ny) not in path:
                 prefix1 = prefix + board[ny][nx]
                 if prefix1 in prefixes:
-                    async for result in self.extending(prefix1, board, prefixes, words, path + ((nx, ny),)):
-                        await asyncio.sleep(0)
+                    for result in self.extending(prefix1, board, prefixes, words, path + ((nx, ny),)):
                         yield result
 
     @staticmethod
@@ -158,14 +210,22 @@ class BoggleInstance(Instance):
         for nx in range(max(0, x-1), min(x+2, size)):
             for ny in range(max(0, y-1), min(y+2, size)):
                 yield nx, ny
-    
-    #Formatting
-    def format_board(self):
-        return '\n\t'.join(' '.join(row).upper() for row in self.board)
 
-    def format_round(self, data, limit=10):
     #Magic
     def __repr__(self):
-        return f'{self.id}: rounds({self.rounds}), timer({self.timer}), size({self.size})'
+        return f'{self.ctx.message.channel.id}: rounds({self.rounds}), timer({self.timer}), size({self.size})'
 
+games = {
+    'boggle': BoggleInstance
+}
 
+if __name__ == "__main__":
+    class dummyCH:
+        id = 1
+    class dummyMSG:
+        channel = dummyCH
+    class dummyCTX:
+        message = dummyMSG
+    loop = asyncio.get_event_loop()
+    instance = BoggleInstance.make(dummyCTX, None, None)
+    print(instance)

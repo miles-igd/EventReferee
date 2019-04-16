@@ -1,28 +1,15 @@
-import discord
 import asyncio
-import offline
-import offlinedb
-import loader
+import discord
+import instances
+import traceback
 
 from discord.ext import commands
 from tabulate import tabulate
 
+UNEXPECTED_ERROR = 'An unexpected error ({}) occured, if this error persists please contact the author.'
+
 class NotInCog(Exception):
     pass
-
-async def message_table(ctx, title, message, headers=None):
-    return await ctx.send(f"{title}\n```ini\n{tabulate(message[:10], headers=headers, tablefmt='simple')}```")
-
-class Base():
-    def __init__(self):
-        self.db = None
-
-    async def stats(self, userid):
-        user_stats = await self.db.get(userid)
-        if user_stats:
-            return user_stats[3:]
-        else:
-            return None
 
 class Games(commands.Cog):
     '''Current available games:
@@ -30,9 +17,23 @@ class Games(commands.Cog):
     -Acro'''
     def __init__(self, bot):
         self.bot = bot
-        self.Main = self.bot.get_cog('Main')
 
-    @commands.command(brief='Start a boggle game!', description='Valid configurations: \n{rounds:[1,32], timer:[1,600], size:[3,9]}')
+    @commands.Cog.listener()
+    async def on_message(self, msg):
+        if msg.content == 'stop': await self.bot.logout()
+        if msg.author.bot: return
+        if msg.channel.id in self.bot.games:
+            self.bot.games[msg.channel.id].play(msg.author.id, msg.content)
+
+    @commands.Cog.listener()
+    async def on_raw_reaction_add(self, reaction):
+        if self.bot.user.id == reaction.user_id: return
+        if reaction.channel_id in self.bot.flags['voting']:
+            self.bot.flags['voting'][reaction.channel_id].vote(reaction.user_id, reaction.emoji.name)
+        print(reaction)
+
+
+    @commands.command(brief='Start a boggle game!', description='Valid configurations (json): \n{rounds:[1,32], timer:[1,600], size:[3,9]}')
     async def boggle(self, ctx, *, config:str = None):
         '''Boggle is a word game of 16 or 25 dice.
         There are letters on the 6 sides of the die.
@@ -55,174 +56,38 @@ class Games(commands.Cog):
 
 
     async def start(self, game, ctx, config:str = None):
+        '''Start an instance of [game] with json config [config], handling any errors'''
         try:
-            instance = instances.games[game].make(ctx, config)
-        except instance.ConfigError as e:
-            ctx.send(e)
+            instance = instances.games[game].make(ctx, self.bot, config)
+        except instances.ConfigError as e:
+            await ctx.send(e)
+            print(traceback.format_exc())
             return
         except Exception as e:
-            ctx.send(f'''An unexpected error ({e}) occured, 
-            if this error persists please contact the author.''')
+            await ctx.send(UNEXPECTED_ERROR.format(e))
+            print(traceback.format_exc())
             return
 
         #register game to Main registry
         try:
-            self.Main.register(ctx.message.channel.id)
+            await self.bot.register(instance)
         except ActiveGame as e:
-            ctx.send(e)
+            await ctx.send(e)
+            print(traceback.format_exc())
             return
 
-        #await messages, until rounds are over.
         try:
+            #await messages, until rounds are over.
             async for message in instance.start():
                 await ctx.send(message)
+            #game end
+            #await ctx.send(await instance.stop())
         except Exception as e:
-            ctx.send(f'''An unexpected error ({e}) occured, 
-            if this error persists please contact the author.''')
-            instance.reset() #This will unregister and unflag for you
+            await ctx.send(UNEXPECTED_ERROR.format(e))
+            print(traceback.format_exc())
+            await instance.reset() #This will unregister and unflag for you
+            print(f'{instance} successfully unregistered from registry')
             return
-
-        #game end
-        await ctx.send(await instance.stop())
         
         #unregister game from Main registry
-        self.Main.unregister(ctx.message.channel.id)
-
-
-class boggle(commands.Cog, Base):
-    '''Boggle is a word game of 16 or 25 dice.
-    There are letters on the 6 sides of the die.
-    
-    A round of boggle starts with the shuffling and rolling of the dice into a 4x4 or 5x5 square.
-    Players must find words formed on the board.
-    Words are formed by connecting letters on the board with their adjacent or diagonal letters.
-    
-    Words are scored by their length, the longer the word, the larger the score!
-    3,4 = 1 pts
-    5 = 2 pts
-    6 = 3 pts
-    7 = 5 pts
-    8+ = 11pts
-    
-    In the 5x5 version, 3 letter words are disallowed.
-    
-    After a set of rounds, the player with the most points is the winner.'''
-    round_timer = 180 #3 minutes
-    words = loader.load(loader.files['words'])
-
-    def __init__(self, bot):
-        self.bot = bot
-        self.Main = self.bot.get_cog('Main')
-        self.db = offlinedb.DBHandler(self.__class__.__name__)
-
-    @commands.command(brief='Start a boggle game!', description='Usage: !boggle <rounds(1-6)> <board_size(4-5)> (eg. !boggle 6 5)[Default: 3 rounds, board_size 5]')
-    async def oboggle(self, ctx, rounds:int = 3, config:int = 5):
-        try:
-            config = offline.Boggle_Instance.types[config]
-        except KeyError:
-            await ctx.send(f'```Board configuration not found, valid: {list(offline.Boggle_Instance.types.keys())}.```')
-            return None
-        if ctx.guild is None:
-            return None
-        elif ctx.message.channel.id in self.Main.games:
-            await ctx.send('A game has already started...')
-            return None
-        else:
-            id = ctx.message.channel.id
-
-        self.Main.games[id] = offline.Boggle_Instance(id, self.words, config)
-
-        rounds = max(1, min(rounds, 6))
-
-        for round in range(1,rounds+1):
-            await ctx.send(f'Round {round} starting in 5 seconds...')
-            await asyncio.sleep(5)
-
-            self.Main.games[id].shuffle_board()
-            await ctx.send(f"Boggle! You have three minutes to find words.\n```css\n\t{self.Main.games[id].format_board()}```")
-
-            await asyncio.sleep(self.round_timer)
-            results = self.Main.games[id].round_over()
-            data, formatted = self.Main.games[id].format_play(self.bot, results)
-            await message_table(ctx, f'Round {round} over. \nTop Ten', formatted[:10], headers=['[User', 'Top Word', 'Score]'])
-            await asyncio.sleep(3)
-            
-        results = self.Main.games[id].game_over()
-        data, formatted = self.Main.games[id].format_score(self.bot, results)
-        try:
-            winner = formatted[0][0]
-            await message_table(ctx, f'Game over! \nThe winner is {winner}!', formatted[:10], headers=['[User', 'Score]'])
-        except IndexError:
-            await message_table(ctx, f'Game over! No one played? 😢', formatted[:10], headers=['[User', 'Score]'])
-
-        if len(formatted) > 1:
-            await self.db.record(data)
-    
-        del self.Main.games[id]
-
-class acro(commands.Cog, Base):
-    '''Acro is a word game involving acronyms.
-    Every round an acronym (eg. A L K I) is given and players will have to create a phrase out of the acronym.
-    
-    At the end of each round, anyone can vote for which phrase they liked the best by reacting to the emoji.
-    Only the last react will count. There is no multiple voting. Feel free to obfuscate your voting with this.
-    
-    The phrase with the most votes gets 5 points, or if tied, 3 points. You can only get points if you have more than 1 vote!
-    The winner at the end of the game is the player with the most points.
-    '''
-    round_timer = 120 #2 minutes
-    emojis = '🍕🍔🍟🌭🍿🥓🥚🥞🍳🍞🥐🥨🧀🥗🥪🌮🌯🥫🍖🍠🥡🍙🍚🍣🍤🍦🍩🍪🍰🍫🍭🍮🍼🍸🥤🏺🥝🍇🍈🍉🍊🍋🍌🍍🍎🍑🍒🍓🍅🍆🌽🥕🌰🥜🎈🎆✨🎉🎊🎃🎏🎎🎐🎑🎀🎁🎠🎡🎢🎪🎭🎨🛒👓⚽⚾🏀🏐🏈🏉🎱🎳🥌⛳🎣🛶🏑🏏🏓🎾🎯🥊🎲🔮📣🔔🎵🎤🎧📯🥁🎷🎸🎹🎺🎻📻🔑🔨📿🏹🔗🔪💣🔫📞📟📠🗿🔌💻💽💾💿📀🎥🎬📡📼📹📷'
-
-    def __init__(self, bot):
-        self.bot = bot
-        self.Main = self.bot.get_cog('Main')
-        self.db = offlinedb.DBHandler(self.__class__.__name__)
-
-    @commands.command(brief='Start an acro game!')
-    async def oacro(self, ctx, rounds:int = 3, config:int = 5):
-        try:
-            config = offline.Acro_Instance.types[config]
-        except KeyError:
-            await ctx.send(f'```Board configuration not found, valid: {list(offline.Acro_Instance.types.keys())}.```')
-            return None
-        if ctx.guild is None:
-            return None
-        elif ctx.message.channel.id in self.Main.games:
-            await ctx.send('A game has already started...')
-            return None
-        else:
-            id = ctx.message.channel.id
-
-        self.Main.active[id] = self.Main.games[id] = offline.Acro_Instance(id, config)
-
-        rounds = max(1, min(rounds, 10))
-
-        for round in range(1,rounds+1):
-            await ctx.send(f'Round {round} starting in 5 seconds...')
-            await asyncio.sleep(5)
-
-            self.Main.games[id].new_acronym()
-            await ctx.send(f"Acro! You have 2 minutes to DM me with your phrase.\n```css\n\t{self.Main.games[id].format_board()}```")
-
-            await asyncio.sleep(20)
-            results = self.Main.games[id].round_over()
-
-            truncated = self.emojis[:len(results)]
-            data, formatted = self.Main.games[id].format_play(self.bot, truncated, results)
-            if len(data) == 0:
-                await ctx.send(f"Round over. No one played? 😢")
-                continue
-            msg = await message_table(ctx, f'Voting phase! \nYou have 2 minutes to vote!', formatted, headers=['[React!', 'Phrase]'])
-            for emoji in truncated:
-                await msg.add_reaction(emoji)
-            self.Main.voting_blocs[id] = self.Main.games[id]
-            await asyncio.sleep(20)
-
-            del self.Main.voting_blocs[id]
-            results = self.Main.games[id].vote_over(data, truncated)
-            #if results:
-            #    data, formatted = self.Main.games[id].format_votes(self.bot, data, results)
-            #    await message_table(ctx, f'Voting phase! \nYou have 2 minutes to vote!', formatted, headers=['[React!', 'Phrase]'])
-
-        del self.Main.games[id]
-        del self.Main.active[id]
+        await self.bot.unregister(instance)
