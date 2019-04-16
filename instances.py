@@ -167,7 +167,7 @@ class BoggleInstance(Instance):
         return data
 
     async def game_over(self):
-        if len(self.scores) < 1:
+        if len(self.scores) <= 1:
             raise NotEnoughPlayers
         counts = Counter(self.scores)
         ordered = counts.most_common()
