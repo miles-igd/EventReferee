@@ -7,7 +7,10 @@ import sqlite3
 from collections import defaultdict
 
 class Cache():
-    '''Cache discord results so we do not spam the API'''
+    '''
+    Cache discord results so we do not spam the API.
+    Currently unused.
+    '''
     dbNAME = 'db/_cache.db' #do not change unless you know what you're doing
 
     tables = {
@@ -35,7 +38,8 @@ class Cache():
         return str(self.mem)
 
 class DBHandler:
-    '''Statistics
+    '''
+    Statistics
     user:
     wins:
     losses:

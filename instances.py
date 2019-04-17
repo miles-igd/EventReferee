@@ -5,6 +5,7 @@ import json
 import math
 import random
 import re
+import string
 import sql
 import traceback
 
@@ -21,9 +22,17 @@ class Instance():
     @classmethod
     def make(cls, ctx, bot, config=None):
         try: 
-            return cls(ctx, bot, json.loads(config))
+            if len(config) > 128:
+                raise ConfigError('''```diff\n-The config is too large, what are you trying to do?```''')
+            config = json.loads(config)
+            if not isinstance(config, dict):
+                raise ConfigError('''```diff\n-The config must be a json object. (eg. {"rounds": 6, "timer":30})```''')
+            return cls(ctx, bot, config)
         except TypeError:
-            return cls(ctx, bot)
+            if config:
+                raise ConfigError('''```diff\n-The config must be a json object with integers. (eg. {"rounds": 6, "timer":30})```''')
+            else:
+                return cls(ctx, bot)
 
     @staticmethod
     def warning(round_, timer=5):
@@ -32,13 +41,13 @@ class Instance():
     def get_users(self, iterable):
         for key, val in iterable:
             if key in self.bot.cache.mem['user']:
-                yield self.bot.cache.mem['user'][key], key, val
+                yield self.bot.cache.mem['user'][key], (key, val)
             else:
                 user = self.bot.get_user(key)
                 print(f"Creating {key} in cache :) will delete after 1800secs")
                 self.bot.cache.mem['user'][key] = user
                 self.bot.loop.create_task(self.bot.cache.t_delete('user', key))
-                yield user, key, val
+                yield user, (key, val)
 
 class BoggleInstance(Instance):
     '''
@@ -96,9 +105,9 @@ class BoggleInstance(Instance):
         except Exception:
             print(traceback.format_exc())
         
-
     async def start(self):
         yield "A game of boggle is starting! See !help boggle if you wish to see the rules."
+        await asyncio.sleep(1)
         for round_ in range(1,self.rounds+1):
             warn, timer = self.warning(round_)
             yield warn
@@ -162,7 +171,8 @@ class BoggleInstance(Instance):
         self.board = None
         self.words = None
 
-        data = [[user, rounds[key]['top'], rounds[key]['score']] for user, key, val in self.get_users(rounds.items())]
+        data = [[user, rounds[key]['top'], rounds[key]['score']]
+                 for user, key, val in self.get_users(rounds.items())]
         data.sort(key=lambda x: x[-1], reverse=True)
         return data
 
@@ -213,10 +223,160 @@ class BoggleInstance(Instance):
 
     #Magic
     def __repr__(self):
-        return f'{self.ctx.message.channel.id}: rounds({self.rounds}), timer({self.timer}), size({self.size})'
+        return f'{self.ctx.message.channel.id} {self.name}: rounds({self.rounds}), timer({self.timer}), size({self.size})'
+
+
+class AcroInstance(Instance):
+    '''
+    Class explicit variables:
+        freq: distribution of first letter of 100,000+ words not including
+              stop words. 
+        emojis: a string of emojis
+
+    Config dictionary arguments:
+        {
+        "rounds": 3, (minimum: 1, maximum: 16)
+        "timer": 120, (minimum: 10, maximum: 600)
+        "min": 4 (minimum: 3, maximum: 9)
+        "max": 7 (minimum: 3, maximum: 9)
+        }
+        if min is less than max than the range is reversed (ie. [max, min])
+        later this might raise an exception
+    '''
+    name = 'acro'
+    freq = (0.0639, 0.046, 0.0936, 0.0487, 0.0416, 
+            0.0464, 0.0316, 0.0331, 0.0357, 0.0127, 
+            0.0098, 0.0432, 0.0576, 0.0306, 0.0237, 
+            0.0853, 0.0044, 0.0531, 0.1078, 0.0512, 
+            0.0204, 0.0162, 0.0333, 0.0025, 0.0056, 
+            0.002)
+
+    emojis = ("🍕🍔🍟🌭🍿🥓🥚🥞🍳🍞🥐🥨🧀🥗🥪🌮🌯🥫🍖🍠🥡🍙🍚🍣🍤🍦🍩🍪🍰🍫🍭🍮🍼🍸🥤🏺🥝🍇🍈🍉"
+             "🍊🍋🍌🍍🍎🍑🍒🍓🍅🍆🌽🥕🌰🥜🎈🎆✨🎉🎊🎃🎏🎎🎐🎑🎀🎁🎠🎡🎢🎪🎭🎨🛒👓⚽⚾🏀🏐🏈"
+             "🏉🎱🎳🥌⛳🎣🛶🏑🏏🏓🎾🎯🥊🎲🔮📣🔔🎵🎤🎧📯🥁🎷🎸🎹🎺🎻📻🔑🔨📿🏹🔗🔪💣🔫📞📟📠"
+             "🗿🔌💻💽💾💿📀🎥🎬📡")
+
+    defaults = {"rounds": 3,
+                "timer": 120,
+                "min": 4,
+                "max": 7}
+
+    def __init__(self, ctx, bot, config = {}):
+        self.ctx = ctx
+        self.bot = bot
+
+        self.rounds = bounds(1, 16, config.get('rounds', self.defaults['rounds']))
+        self.timer =  bounds(10, 600, config.get('timer', self.defaults['timer']))
+        self.min =  bounds(3, 9, config.get('size', self.defaults['min']))
+        self.max =  bounds(3, 9, config.get('size', self.defaults['max']))
+
+        self.scores = defaultdict(int)
+        self.plays = defaultdict(set)
+        self.amt = 0
+        self.acro = None
+        self.votes = {}
+
+    async def reset(self):
+        try:
+            await self.bot.unregister(self)
+        except Exception:
+            print(traceback.format_exc())
+
+        try:
+            if self.ctx.message.channel.id in self.bot.flags['voting']:
+                await self.bot.remove_flag(self, 'voting')
+        except Exception:
+            print(traceback.format_exc())
+        
+    async def start(self):
+        yield "A game of acro is starting! See !help acro if you wish to see the rules."
+        await asyncio.sleep(1)
+        for round_ in range(1,self.rounds+1):
+            warn, timer = self.warning(round_)
+            yield warn
+            await asyncio.sleep(timer)
+            self.new_round()
+            yield formatting.header_code(f'Acro! You have {formatting.sec2min(self.timer)} minutes to DM me a phrase.', 
+                                        formatting.acro(self.acro),
+                                        'css',)
+            await asyncio.sleep(self.timer)
+            try:
+                table, vote_table = await self.round_over()
+                msg = await self.ctx.send(formatting.header_code('Vote now! You have 1 minute.',
+                                            formatting.table(table, ['[React', 'Phrase]']),
+                                            'ini'))
+                for emoji in vote_table:
+                    await msg.add_reaction(emoji)
+                await asyncio.sleep(60)
+                table = await self.vote_over(vote_table)
+                yield formatting.header_code('Vote over.',
+                                            formatting.table(table, ['[User', 'Phrase', 'Votes]']),
+                                            'ini')
+            except NotEnoughPlayers:
+                yield formatting.header_code('Round over. No one played? 😢',
+                                            formatting.table([], ['[React', 'Phrase]']),
+                                            'ini')
+            await asyncio.sleep(timer)
+
+    def new_round(self):
+        self.plays = defaultdict(set)
+
+        size = random.randint(min(self.min, self.max), max(self.min, self.max))
+        self.acro = [random.choices(string.ascii_lowercase, weights=self.freq)[0] for _ in range(size)]
+
+    async def round_over(self):
+        results = list(self.plays.items())
+        random.shuffle(results)
+        valid = {player: acro for player, acro in results if self.check_valid(acro)}
+
+        self.acro = None
+        self.plays = defaultdict(set)
+        if len(valid) == 0:
+            raise NotEnoughPlayers
+        
+        return await self.vote_start(valid)
+
+    async def vote_start(self, valid):
+        self.votes = {}
+
+        reacts = random.choices(self.emojis, k=len(valid))
+        data = {reacts[i]: (user, acro) for i, (user, acro) in enumerate(valid.items())}
+        table = [(emoji, formatting.phrase(phrase)) for emoji, (user, phrase) in data.items()]
+
+        await self.bot.add_flag(self, 'voting')
+
+        return table, data
+
+    async def vote_over(self, vote_table):
+        if not self.votes: return None
+
+        reactions = {user: emoji for user, emoji in self.votes.items() if emoji in emojis}
+        counts = Counter(reactions.values())
+        votes = counts.most_common()
+
+    def play(self, userid, content):
+        self.plays[userid] = content.split(' ')
+
+    def vote(self, user, vote):
+        self.votes[user] = vote
+    
+    #Game-specific helper functions:
+    def check_valid(self, acro):
+        if len(acro) != len(self.acro):
+            return False
+        for letter, word in zip(self.acro, acro):
+            if letter != word[0].lower():
+                return False
+        
+        return True
+
+    #Magic
+    def __repr__(self):
+        return f'{self.ctx.message.channel.id} {self.name}: rounds({self.rounds}), timer({self.timer})'
 
 games = {
-    'boggle': BoggleInstance
+    'boggle': BoggleInstance,
+    'acro': AcroInstance
 }
 
 if __name__ == "__main__":
@@ -226,6 +386,3 @@ if __name__ == "__main__":
         channel = dummyCH
     class dummyCTX:
         message = dummyMSG
-    loop = asyncio.get_event_loop()
-    instance = BoggleInstance.make(dummyCTX, None, None)
-    print(instance)

@@ -11,6 +11,9 @@ UNEXPECTED_ERROR = 'An unexpected error ({}) occured, if this error persists ple
 class NotInCog(Exception):
     pass
 
+class ActiveGame(Exception):
+    pass
+
 class Games(commands.Cog):
     '''Current available games:
     -Boggle
@@ -29,13 +32,14 @@ class Games(commands.Cog):
     async def on_raw_reaction_add(self, reaction):
         if self.bot.user.id == reaction.user_id: return
         if reaction.channel_id in self.bot.flags['voting']:
-            self.bot.flags['voting'][reaction.channel_id].vote(reaction.user_id, reaction.emoji.name)
+            self.bot.games[reaction.channel_id].vote(reaction.user_id, reaction.emoji.name)
         print(reaction)
 
 
-    @commands.command(brief='Start a boggle game!', description='Valid configurations (json): \n{rounds:[1,32], timer:[1,600], size:[3,9]}')
+    @commands.command(brief='Start a boggle game.', description='Valid configurations (json): \n{rounds:[1,32], timer:[1,600], size:[3,9]}')
     async def boggle(self, ctx, *, config:str = None):
-        '''Boggle is a word game of 16 or 25 dice.
+        '''
+        Boggle is a word game of 16 or 25 dice.
         There are letters on the 6 sides of the die.
         
         A round of boggle starts with the shuffling and rolling of the dice into a 4x4 or 5x5 square.
@@ -54,6 +58,19 @@ class Games(commands.Cog):
         After a set of rounds, the player with the most points is the winner.'''
         await self.start('boggle', ctx, config)
 
+    @commands.command(brief='Start an acro game.', description='Valid configurations (json): \n{rounds:[1,32], timer:[1,600], min:[3,9], max:[3,9]}')
+    async def acro(self, ctx, *, config:str = None):
+        '''
+        Acro is a word game involving acronyms.
+        Every round an acronym (eg. A L K I) is given and players will have to create a phrase out of the acronym.
+        
+        At the end of each round, anyone can vote for which phrase they liked the best by reacting to the emoji.
+        Only the last react will count. There is no multiple voting. Feel free to obfuscate your voting with this.
+        
+        The phrase with the most votes gets 5 points, or if tied, 3 points. You can only get points if you have more than 1 vote!
+        The winner at the end of the game is the player with the most points.
+        '''
+        await self.start('acro', ctx, config)
 
     async def start(self, game, ctx, config:str = None):
         '''Start an instance of [game] with json config [config], handling any errors'''
