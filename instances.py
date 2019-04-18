@@ -406,11 +406,29 @@ class AcroInstance(Instance):
 
 
 class UnscrambleInstance(Instance):
+    name = 'unscramble'
+    '''
+    Class explicit variables:
+        freq: distribution of first letter of 100,000+ words not including
+              stop words. 
+        emojis: a string of emojis
+
+    Config dictionary arguments:
+        {
+        "rounds": 3, (minimum: 1, maximum: 16)
+        "timer": 120, (minimum: 10, maximum: 600)
+        "min": 4 (minimum: 3, maximum: 9)
+        "max": 7 (minimum: 3, maximum: 9)
+        }
+        if min is less than max than the range is reversed (ie. [max, min])
+        later this might raise an exception
+    '''
     pass
 
 games = {
     'boggle': BoggleInstance,
-    'acro': AcroInstance
+    'acro': AcroInstance,
+    'unscramble': UnscrambleInstance
 }
 
 if __name__ == "__main__":

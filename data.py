@@ -1,6 +1,5 @@
 files = {
     'words': 'data/words.txt',
-    'blacklist': 'data/blacklist.txt',
 }
 
 with open(files['words'], 'r') as file:
