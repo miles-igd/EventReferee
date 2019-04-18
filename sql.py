@@ -2,6 +2,7 @@ import asyncio
 import aiosqlite
 import discord
 import inspect
+import logging
 import sqlite3
 
 from collections import defaultdict
@@ -32,7 +33,7 @@ class Cache():
     async def t_delete(self, key, id, timer=1800):
         await asyncio.sleep(timer)
         del self.mem[key][id]
-        print(f'Successfully deleted {id} from cache')
+        logging.info(f'Successfully deleted {id} from cache')
 
     def __repr__(self):
         return str(self.mem)

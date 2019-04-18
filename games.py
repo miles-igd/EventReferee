@@ -1,6 +1,7 @@
 import asyncio
 import discord
 import instances
+import logging
 import traceback
 
 from discord.ext import commands
@@ -21,13 +22,17 @@ class Games(commands.Cog):
     async def on_message(self, msg):
         if msg.content == 'stop': await self.bot.logout()
         if msg.author.bot: return
-        if msg.channel.id in self.bot.games:
+        if msg.channel.id in self.bot.flags['playable']:
             self.bot.games[msg.channel.id].play(msg.author.id, msg.content)
+        elif len(self.bot.flags['DMable']) > 0 and isinstance(msg.channel, discord.DMChannel):
+            for channel in self.bot.flags['DMable']:
+                self.bot.games[channel].play(msg.author.id, msg.content)
+
 
     @commands.Cog.listener()
     async def on_raw_reaction_add(self, reaction):
         if self.bot.user.id == reaction.user_id: return
-        if reaction.channel_id in self.bot.flags['voting']:
+        if reaction.channel_id in self.bot.flags['votable']:
             self.bot.games[reaction.channel_id].vote(reaction.user_id, reaction.emoji.name)
 
 
@@ -75,11 +80,11 @@ class Games(commands.Cog):
             instance = instances.games[game].make(ctx, self.bot, config)
         except instances.ConfigError as e:
             await ctx.send(e)
-            print(traceback.format_exc())
+            logging.warning(traceback.format_exc())
             return
         except Exception as e:
             await ctx.send(UNEXPECTED_ERROR.format(e))
-            print(traceback.format_exc())
+            logging.warning(traceback.format_exc())
             return
 
         #register game to Main registry
@@ -87,7 +92,7 @@ class Games(commands.Cog):
             await self.bot.register(instance)
         except ActiveGame as e:
             await ctx.send(e)
-            print(traceback.format_exc())
+            logging.warning(traceback.format_exc())
             return
 
         try:
@@ -96,11 +101,11 @@ class Games(commands.Cog):
                 await ctx.send(message)
         except Exception as e:
             await ctx.send(UNEXPECTED_ERROR.format(e))
-            print(traceback.format_exc())
+            logging.warning(traceback.format_exc())
         finally:
             #unregister game from Main registry, 
             #the instance should not have any flags.
             #Otherwise, there is an error inside the instance.
             await self.bot.unregister(instance)
-            print(f'{instance} successfully unregistered from registry')
+            logging.info(f'{instance} successfully unregistered from registry')
         

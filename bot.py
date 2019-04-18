@@ -1,7 +1,8 @@
 import asyncio
 import discord
-import inspect
 import games
+import inspect
+import logging
 import sql
 
 from collections import defaultdict
@@ -11,7 +12,6 @@ class RefBot(commands.Bot):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.games = {}
-        self.active = defaultdict(set)
         self.flags = defaultdict(set)
 
         self.cache = sql.Cache.startup(self)
@@ -25,17 +25,11 @@ class RefBot(commands.Bot):
 
         self.games[instance.ctx.message.channel.id] = instance
 
-        #f instance.name in self.DMable:
-        #   self.active[instance.name].add(instance)
-
     async def unregister(self, instance):
         '''If a game is running, it HAS to be in the registry, otherwise it's broken.
         This function should only be called at the end of an instance's life, otherwise
         an error occured.'''
         del self.games[instance.ctx.message.channel.id]
-
-        #if instance.name in self.DMable:
-        #    self.active[instance.name].remove(instance)
 
     async def add_flag(self, instance, flag):
         '''Flags should only be added or removed by an instance'''
@@ -70,10 +64,14 @@ class Debug(commands.Cog):
         await ctx.send(self.bot.flags)
 
 if __name__ == '__main__':
+    logging.basicConfig(handlers = [logging.FileHandler('_bot.log', 'w', 'utf-8')],
+                        format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
+                        datefmt='%H:%M:%S',
+                        level=logging.INFO)
     bot = RefBot(command_prefix='!', description='Referee Core Bot.')
     @bot.event
     async def on_ready():
-        print(f'{bot.user.name}: {bot.user.id}')
+        logging.info(f'{bot.user.name}: {bot.user.id}')
 
 
     with open('_bot.creds', 'r') as file:

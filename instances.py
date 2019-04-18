@@ -2,6 +2,7 @@ import asyncio
 import data
 import formatting as fmt
 import json
+import logging
 import math
 import random
 import re
@@ -44,23 +45,48 @@ class Instance():
                 yield self.bot.cache.mem['user'][key], (key, val)
             else:
                 user = self.bot.get_user(key)
-                print(f"Creating {key} in cache :) will delete after 1800secs")
+                logging.info(f"Creating {key} in cache :) will delete after 1800secs")
                 self.bot.cache.mem['user'][key] = user
                 self.bot.loop.create_task(self.bot.cache.t_delete('user', key))
                 yield user, (key, val)
+
+    async def game_over(self):
+        try:
+            table, winners = await self._game_over()
+        except NotEnoughPlayers:
+            table, winners = [], 'Not enough players? 😥'
+        return fmt.header_code(f'Game over. {winners}',
+                                    fmt.table(table, ['Users', 'Score'], fmt.two),
+                                    'md')
+
+    async def _game_over(self):
+        if len(self.scores) == 0:
+            raise NotEnoughPlayers
+        counts = Counter(self.scores)
+        ordered = counts.most_common()
+
+        data = [[user, score] for user, (key, score) in self.get_users(ordered)]
+        winners = {user.name for user, score in data if score == ordered[0][1]}
+
+        if len(self.scores) > 1:
+            await sql.DBHandler.incr(self.name, 'wins', ordered[:len(winners)])
+            await sql.DBHandler.incr(self.name, 'losses', ordered[len(winners):])
+
+        return data, f"Congratz to the winner(s), {', '.join(winners)}. 🎉"
 
     async def reset(self):
         try:
             await self.bot.unregister(self)
         except Exception:
-            print(traceback.format_exc())
+            logging.error(traceback.format_exc())
 
         try:
             for flag in self.possible_flags:
                 if self.ctx.message.channel.id in self.bot.flags[flag]:
                     await self.bot.remove_flag(self, flag)
         except Exception:
-            print(traceback.format_exc())
+            logging.error(traceback.format_exc())
+
 
 class BoggleInstance(Instance):
     '''
@@ -125,20 +151,17 @@ class BoggleInstance(Instance):
             yield fmt.header_code(f'Boggle! You have {fmt.sec2min(self.timer)} minutes to find words.', 
                                         fmt.board(self.board),
                                         'css',)
-            await asyncio.sleep(self.timer)
+            await self.guess_phase()
             table = self.round_over()
             yield fmt.header_code('Round over.',
                                         fmt.table(table, ['Users', 'Best Word', 'Score'], fmt.three),
                                         'md')
             await asyncio.sleep(timer)
+        yield await self.game_over()
 
-        try:
-            table, winners = await self.game_over()
-        except NotEnoughPlayers:
-            table, winners = [], 'Not enough players? 😥'
-        yield fmt.header_code(f'Game over. {winners}',
-                                    fmt.table(table, ['Users', 'Score'], fmt.two),
-                                    'md')
+    @flagger('playable', 'deletable')
+    async def guess_phase(self):
+        await asyncio.sleep(self.timer)
 
     async def stop(self):
         '''To be used to stop, not necessarily end.'''
@@ -184,20 +207,6 @@ class BoggleInstance(Instance):
                  for user, (key, val) in self.get_users(rounds.items())]
         data.sort(key=lambda x: x[-1], reverse=True)
         return data
-
-    async def game_over(self):
-        if len(self.scores) <= 1:
-            raise NotEnoughPlayers
-        counts = Counter(self.scores)
-        ordered = counts.most_common()
-
-        data = [[user, score] for user, key, score in self.get_users(ordered)]
-        winners = {user.name for user, score in data if score == ordered[0][1]}
-
-        await sql.DBHandler.incr(self.name, 'wins', ordered[:len(winners)])
-        await sql.DBHandler.incr(self.name, 'losses', ordered[len(winners):])
-
-        return data, f"Congratz to the winner(s), {', '.join(winners)}. 🎉"
 
     #Game-specific helper function
     def solve_board(self, letters, board):
@@ -298,22 +307,23 @@ class AcroInstance(Instance):
             await asyncio.sleep(timer)
             self.new_round()
             yield fmt.header_code(f'Acro! You have {fmt.sec2min(self.timer)} minutes to DM me a phrase.', 
-                                        fmt.acro(self.acro),
-                                        'css',)
+                                fmt.acro(self.acro),
+                                'css',)
             await self.phrase_phase()
             try:
                 yield await self.voting_phase()
             except NotEnoughPlayers:
                 yield fmt.header_code('Round over. No one played? 😢',
-                                            fmt.table([], ['React', 'Phrase'], fmt.two),
-                                            'md')
+                                    fmt.table([], ['React', 'Phrase'], fmt.two),
+                                    'md')
             await asyncio.sleep(timer)
+        yield await self.game_over()
 
-    @flagger('DMable')
+    @flagger('DMable', 'playable', 'deletable')
     async def phrase_phase(self):
         await asyncio.sleep(self.timer)
 
-    @flagger('voting')
+    @flagger('votable')
     async def voting_phase(self):
         table, vote_table, reacts = await self.round_over()
         msg = await self.ctx.send(fmt.header_code(f'Vote now! You have {fmt.sec2min(self.vote_timer)} minutes.',
@@ -345,7 +355,7 @@ class AcroInstance(Instance):
 
         reacts = random.choices(self.emojis, k=len(self.plays))
         data = {reacts[i]: (user, fmt.phrase(phrase)) for i, (user, phrase) in enumerate(self.plays.items())}
-        table = [(f'{emoji} ', phrase) for emoji, (user, phrase) in data.items()]
+        table = [(f'{emoji}​', phrase) for emoji, (user, phrase) in data.items()]
 
         return table, data, reacts
 
@@ -379,17 +389,24 @@ class AcroInstance(Instance):
     
     #Game-specific helper functions:
     def check_valid(self, acro):
-        if not self.acro: return False
-        if len(acro) != len(self.acro): return False
-        for letter, word in zip(self.acro, acro):
-            if letter != word[0].lower():
-                return False
-        
-        return True
+        try:
+            if len(acro) != len(self.acro): return False
+            for letter, word in zip(self.acro, acro):
+                if letter != word[0].lower():
+                    return False
+            
+            return True
+        except TypeError as e:
+            logging.info(e)
+            return False
 
     #Magic
     def __repr__(self):
         return f'{self.ctx.message.channel.id} {self.name}: rounds({self.rounds}), timer({self.timer})'
+
+
+class UnscrambleInstance(Instance):
+    pass
 
 games = {
     'boggle': BoggleInstance,
