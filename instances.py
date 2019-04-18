@@ -1,6 +1,6 @@
 import asyncio
 import data
-import formatting
+import formatting as fmt
 import json
 import math
 import random
@@ -10,7 +10,7 @@ import sql
 import traceback
 
 from collections import defaultdict, Counter, OrderedDict
-from util import bounds
+from util import bounds, flagger
 
 class ConfigError(Exception):
     pass
@@ -28,7 +28,7 @@ class Instance():
             if not isinstance(config, dict):
                 raise ConfigError('''```diff\n-The config must be a json object. (eg. {"rounds": 6, "timer":30})```''')
             return cls(ctx, bot, config)
-        except TypeError:
+        except (TypeError, json.decoder.JSONDecodeError):
             if config:
                 raise ConfigError('''```diff\n-The config must be a json object with integers. (eg. {"rounds": 6, "timer":30})```''')
             else:
@@ -48,6 +48,19 @@ class Instance():
                 self.bot.cache.mem['user'][key] = user
                 self.bot.loop.create_task(self.bot.cache.t_delete('user', key))
                 yield user, (key, val)
+
+    async def reset(self):
+        try:
+            await self.bot.unregister(self)
+        except Exception:
+            print(traceback.format_exc())
+
+        try:
+            for flag in self.possible_flags:
+                if self.ctx.message.channel.id in self.bot.flags[flag]:
+                    await self.bot.remove_flag(self, flag)
+        except Exception:
+            print(traceback.format_exc())
 
 class BoggleInstance(Instance):
     '''
@@ -86,6 +99,8 @@ class BoggleInstance(Instance):
                 "timer": 180,
                 "size": 5}
 
+    possible_flags = {}
+
     def __init__(self, ctx, bot, config = {}):
         self.ctx = ctx
         self.bot = bot
@@ -98,12 +113,6 @@ class BoggleInstance(Instance):
         self.words = None
         self.scores = defaultdict(int)
         self.plays = defaultdict(set)
-
-    async def reset(self):
-        try:
-            await self.bot.unregister(self)
-        except Exception:
-            print(traceback.format_exc())
         
     async def start(self):
         yield "A game of boggle is starting! See !help boggle if you wish to see the rules."
@@ -113,23 +122,23 @@ class BoggleInstance(Instance):
             yield warn
             await asyncio.sleep(timer)
             self.new_round()
-            yield formatting.header_code(f'Boggle! You have {formatting.sec2min(self.timer)} minutes to find words.', 
-                                        formatting.board(self.board),
+            yield fmt.header_code(f'Boggle! You have {fmt.sec2min(self.timer)} minutes to find words.', 
+                                        fmt.board(self.board),
                                         'css',)
             await asyncio.sleep(self.timer)
             table = self.round_over()
-            yield formatting.header_code('Round over.',
-                                        formatting.table(table, ['[Users', 'Best Word', 'Score]']),
-                                        'ini')
+            yield fmt.header_code('Round over.',
+                                        fmt.table(table, ['Users', 'Best Word', 'Score'], fmt.three),
+                                        'md')
             await asyncio.sleep(timer)
 
         try:
             table, winners = await self.game_over()
         except NotEnoughPlayers:
             table, winners = [], 'Not enough players? 😥'
-        yield formatting.header_code(f'Game over. {winners}',
-                                    formatting.table(table, ['[Users', 'Score]']),
-                                    'ini')
+        yield fmt.header_code(f'Game over. {winners}',
+                                    fmt.table(table, ['Users', 'Score'], fmt.two),
+                                    'md')
 
     async def stop(self):
         '''To be used to stop, not necessarily end.'''
@@ -172,7 +181,7 @@ class BoggleInstance(Instance):
         self.words = None
 
         data = [[user, rounds[key]['top'], rounds[key]['score']]
-                 for user, key, val in self.get_users(rounds.items())]
+                 for user, (key, val) in self.get_users(rounds.items())]
         data.sort(key=lambda x: x[-1], reverse=True)
         return data
 
@@ -253,13 +262,16 @@ class AcroInstance(Instance):
 
     emojis = ("🍕🍔🍟🌭🍿🥓🥚🥞🍳🍞🥐🥨🧀🥗🥪🌮🌯🥫🍖🍠🥡🍙🍚🍣🍤🍦🍩🍪🍰🍫🍭🍮🍼🍸🥤🏺🥝🍇🍈🍉"
              "🍊🍋🍌🍍🍎🍑🍒🍓🍅🍆🌽🥕🌰🥜🎈🎆✨🎉🎊🎃🎏🎎🎐🎑🎀🎁🎠🎡🎢🎪🎭🎨🛒👓⚽⚾🏀🏐🏈"
-             "🏉🎱🎳🥌⛳🎣🛶🏑🏏🏓🎾🎯🥊🎲🔮📣🔔🎵🎤🎧📯🥁🎷🎸🎹🎺🎻📻🔑🔨📿🏹🔗🔪💣🔫📞📟📠"
-             "🗿🔌💻💽💾💿📀🎥🎬📡")
+             "🎱🎳🥌⛳🎣🛶🏑🏏🏓🎾🎯🥊🎲🔮📣🔔🎵🎤🎧📯🥁🎷🎸🎹🎺🎻📻🔑🔨🏹🔗🔪💣🔫📞📟📠"
+             "🗿🔌💻💽💾💿📀🎥🎬📡🐭🐹🐰🐶🐺🦊🐵🐸🙈🙉🙊🐯🦁🐴🐮🐷🐻🐼🐲🦄")
 
     defaults = {"rounds": 3,
                 "timer": 120,
+                "vote_timer": 60,
                 "min": 4,
                 "max": 7}
+
+    possible_flags = {'voting'}
 
     def __init__(self, ctx, bot, config = {}):
         self.ctx = ctx
@@ -267,6 +279,7 @@ class AcroInstance(Instance):
 
         self.rounds = bounds(1, 16, config.get('rounds', self.defaults['rounds']))
         self.timer =  bounds(10, 600, config.get('timer', self.defaults['timer']))
+        self.vote_timer = bounds(10, 600, config.get('vote_timer', self.defaults['vote_timer']))
         self.min =  bounds(3, 9, config.get('size', self.defaults['min']))
         self.max =  bounds(3, 9, config.get('size', self.defaults['max']))
 
@@ -275,18 +288,6 @@ class AcroInstance(Instance):
         self.amt = 0
         self.acro = None
         self.votes = {}
-
-    async def reset(self):
-        try:
-            await self.bot.unregister(self)
-        except Exception:
-            print(traceback.format_exc())
-
-        try:
-            if self.ctx.message.channel.id in self.bot.flags['voting']:
-                await self.bot.remove_flag(self, 'voting')
-        except Exception:
-            print(traceback.format_exc())
         
     async def start(self):
         yield "A game of acro is starting! See !help acro if you wish to see the rules."
@@ -296,27 +297,36 @@ class AcroInstance(Instance):
             yield warn
             await asyncio.sleep(timer)
             self.new_round()
-            yield formatting.header_code(f'Acro! You have {formatting.sec2min(self.timer)} minutes to DM me a phrase.', 
-                                        formatting.acro(self.acro),
+            yield fmt.header_code(f'Acro! You have {fmt.sec2min(self.timer)} minutes to DM me a phrase.', 
+                                        fmt.acro(self.acro),
                                         'css',)
-            await asyncio.sleep(self.timer)
+            await self.phrase_phase()
             try:
-                table, vote_table = await self.round_over()
-                msg = await self.ctx.send(formatting.header_code('Vote now! You have 1 minute.',
-                                            formatting.table(table, ['[React', 'Phrase]']),
-                                            'ini'))
-                for emoji in vote_table:
-                    await msg.add_reaction(emoji)
-                await asyncio.sleep(60)
-                table = await self.vote_over(vote_table)
-                yield formatting.header_code('Vote over.',
-                                            formatting.table(table, ['[User', 'Phrase', 'Votes]']),
-                                            'ini')
+                yield await self.voting_phase()
             except NotEnoughPlayers:
-                yield formatting.header_code('Round over. No one played? 😢',
-                                            formatting.table([], ['[React', 'Phrase]']),
-                                            'ini')
+                yield fmt.header_code('Round over. No one played? 😢',
+                                            fmt.table([], ['React', 'Phrase'], fmt.two),
+                                            'md')
             await asyncio.sleep(timer)
+
+    @flagger('DMable')
+    async def phrase_phase(self):
+        await asyncio.sleep(self.timer)
+
+    @flagger('voting')
+    async def voting_phase(self):
+        table, vote_table, reacts = await self.round_over()
+        msg = await self.ctx.send(fmt.header_code(f'Vote now! You have {fmt.sec2min(self.vote_timer)} minutes.',
+                                    fmt.table(table, ['React', 'Phrase'], fmt.two),
+                                    'md'))
+        for emoji in vote_table:
+            await msg.add_reaction(emoji)
+        await asyncio.sleep(self.vote_timer)
+
+        header, table = await self.vote_over(vote_table, reacts)
+        return fmt.header_code(header,
+                                    fmt.table(table, ['User', 'Phrase', 'Votes'], fmt.three),
+                                    'md')
 
     def new_round(self):
         self.plays = defaultdict(set)
@@ -325,45 +335,52 @@ class AcroInstance(Instance):
         self.acro = [random.choices(string.ascii_lowercase, weights=self.freq)[0] for _ in range(size)]
 
     async def round_over(self):
-        results = list(self.plays.items())
-        random.shuffle(results)
-        valid = {player: acro for player, acro in results if self.check_valid(acro)}
-
-        self.acro = None
-        self.plays = defaultdict(set)
-        if len(valid) == 0:
+        if len(self.plays) == 0:
             raise NotEnoughPlayers
-        
-        return await self.vote_start(valid)
 
-    async def vote_start(self, valid):
+        return await self.vote_start()
+
+    async def vote_start(self):
         self.votes = {}
 
-        reacts = random.choices(self.emojis, k=len(valid))
-        data = {reacts[i]: (user, acro) for i, (user, acro) in enumerate(valid.items())}
-        table = [(emoji, formatting.phrase(phrase)) for emoji, (user, phrase) in data.items()]
+        reacts = random.choices(self.emojis, k=len(self.plays))
+        data = {reacts[i]: (user, fmt.phrase(phrase)) for i, (user, phrase) in enumerate(self.plays.items())}
+        table = [(f'{emoji} ', phrase) for emoji, (user, phrase) in data.items()]
 
-        await self.bot.add_flag(self, 'voting')
+        return table, data, reacts
 
-        return table, data
-
-    async def vote_over(self, vote_table):
+    async def vote_over(self, vote_table, reacts):
         if not self.votes: return None
 
-        reactions = {user: emoji for user, emoji in self.votes.items() if emoji in emojis}
+        reactions = {user: emoji for user, emoji in self.votes.items() if emoji in reacts}
+        if len(reactions) == 0:
+            return 'No voters. 😢', []
         counts = Counter(reactions.values())
         votes = counts.most_common()
+        
+        table = [(user, phrase, counts[emoji]) for emoji, (user, (userid, phrase)) in zip(vote_table.keys(), self.get_users(vote_table.values()))]
+        winners = [user for user, phrase, count in table if count == votes[0][1]]
+        
+        if len(winners) > 1:
+            for winner in winners:
+                self.scores[winner.id] += 3
+        else:
+            self.scores[winners[0].id] += 5
+        
+        return f"Vote over. Congratz {', '.join(winner.name for winner in winners)}. 🎉", table
 
     def play(self, userid, content):
-        self.plays[userid] = content.split(' ')
+        play_ = content.split(' ')
+        if self.check_valid(play_):
+            self.plays[userid] = play_
 
     def vote(self, user, vote):
         self.votes[user] = vote
     
     #Game-specific helper functions:
     def check_valid(self, acro):
-        if len(acro) != len(self.acro):
-            return False
+        if not self.acro: return False
+        if len(acro) != len(self.acro): return False
         for letter, word in zip(self.acro, acro):
             if letter != word[0].lower():
                 return False

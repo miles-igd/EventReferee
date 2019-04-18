@@ -8,8 +8,6 @@ from collections import defaultdict
 from discord.ext import commands
 
 class RefBot(commands.Bot):
-    DMable = {'acro'} #set of games that can be played through DMChannels.
-
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.games = {}
@@ -22,13 +20,13 @@ class RefBot(commands.Bot):
     async def register(self, instance):
         '''If a game is running, it HAS to be in the registry, otherwise it's broken.
         This function should only be called at the beginning of an instance's life.'''
-        if instance.ctx.message.id in self.games:
+        if instance.ctx.message.channel.id in self.games:
             raise games.ActiveGame('An instance in this channel is already running. If not, try running !reset in this channel.')
 
         self.games[instance.ctx.message.channel.id] = instance
 
-        if instance.name in self.DMable:
-            self.active[instance.name].add(instance)
+        #f instance.name in self.DMable:
+        #   self.active[instance.name].add(instance)
 
     async def unregister(self, instance):
         '''If a game is running, it HAS to be in the registry, otherwise it's broken.
@@ -36,8 +34,8 @@ class RefBot(commands.Bot):
         an error occured.'''
         del self.games[instance.ctx.message.channel.id]
 
-        if instance.name in self.DMable:
-            self.active[instance.name].remove(instance)
+        #if instance.name in self.DMable:
+        #    self.active[instance.name].remove(instance)
 
     async def add_flag(self, instance, flag):
         '''Flags should only be added or removed by an instance'''

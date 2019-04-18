@@ -4,12 +4,8 @@ import instances
 import traceback
 
 from discord.ext import commands
-from tabulate import tabulate
 
 UNEXPECTED_ERROR = 'An unexpected error ({}) occured, if this error persists please contact the author.'
-
-class NotInCog(Exception):
-    pass
 
 class ActiveGame(Exception):
     pass
@@ -33,10 +29,10 @@ class Games(commands.Cog):
         if self.bot.user.id == reaction.user_id: return
         if reaction.channel_id in self.bot.flags['voting']:
             self.bot.games[reaction.channel_id].vote(reaction.user_id, reaction.emoji.name)
-        print(reaction)
 
 
-    @commands.command(brief='Start a boggle game.', description='Valid configurations (json): \n{rounds:[1,32], timer:[1,600], size:[3,9]}')
+    @commands.command(brief='Start a boggle game.', 
+    description='Valid configurations (json): \n{rounds:[1,32], timer:[1,600], size:[3,9]}')
     async def boggle(self, ctx, *, config:str = None):
         '''
         Boggle is a word game of 16 or 25 dice.
@@ -58,7 +54,8 @@ class Games(commands.Cog):
         After a set of rounds, the player with the most points is the winner.'''
         await self.start('boggle', ctx, config)
 
-    @commands.command(brief='Start an acro game.', description='Valid configurations (json): \n{rounds:[1,32], timer:[1,600], min:[3,9], max:[3,9]}')
+    @commands.command(brief='Start an acro game.', 
+    description='Valid configurations (json): \n{rounds:[1,32], timer:[1,600], vote_timer:[1,600], min:[3,9], max:[3,9]}')
     async def acro(self, ctx, *, config:str = None):
         '''
         Acro is a word game involving acronyms.
@@ -97,14 +94,13 @@ class Games(commands.Cog):
             #await messages, until rounds are over.
             async for message in instance.start():
                 await ctx.send(message)
-            #game end
-            #await ctx.send(await instance.stop())
         except Exception as e:
             await ctx.send(UNEXPECTED_ERROR.format(e))
             print(traceback.format_exc())
-            await instance.reset() #This will unregister and unflag for you
+        finally:
+            #unregister game from Main registry, 
+            #the instance should not have any flags.
+            #Otherwise, there is an error inside the instance.
+            await self.bot.unregister(instance)
             print(f'{instance} successfully unregistered from registry')
-            return
         
-        #unregister game from Main registry
-        await self.bot.unregister(instance)
