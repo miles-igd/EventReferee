@@ -41,14 +41,17 @@ class Instance():
 
     def get_users(self, iterable):
         for key, val in iterable:
-            if key in self.bot.cache.mem['user']:
-                yield self.bot.cache.mem['user'][key], (key, val)
-            else:
-                user = self.bot.get_user(key)
-                logging.info(f"Creating {key} in cache :) will delete after 1800secs")
-                self.bot.cache.mem['user'][key] = user
-                self.bot.loop.create_task(self.bot.cache.t_delete('user', key))
-                yield user, (key, val)
+            yield self.get_user(key), (key, val)
+
+    def get_user(self, userid):
+        if userid in self.bot.cache.mem['user']:
+            return self.bot.cache.mem['user'][userid]
+        else:
+            user = self.bot.get_user(userid)
+            logging.info(f"Creating {userid} in cache :) will delete after 1800secs")
+            self.bot.cache.mem['user'][userid] = user
+            self.bot.loop.create_task(self.bot.cache.t_delete('user', userid))
+            return user
 
     async def game_over(self):
         try:
@@ -87,7 +90,12 @@ class Instance():
         except Exception:
             logging.error(traceback.format_exc())
 
+    def play(self, userid, content):
+        raise NotImplementedError
 
+###################################
+#Boggle
+###################################
 class BoggleInstance(Instance):
     '''
     Class explicit variables:
@@ -212,10 +220,10 @@ class BoggleInstance(Instance):
     def solve_board(self, letters, board):
         bogglable = re.compile(f'[{"".join(set(letters))}]{{3,}}$', re.I).match
 
-        words = set(word for word in data.words if bogglable(word))
-        prefixes = set(word[:i] for word in words for i in range(2, len(word)+1))
+        words = {word for word in data.words if bogglable(word)}
+        prefixes = {word[:i] for word in words for i in range(2, len(word)+1)}
 
-        return set(word for word in self.solve(board, prefixes, words))
+        return {word for word in self.solve(board, prefixes, words)}
 
     def solve(self, board, prefixes, words):
         for y, row in enumerate(board):
@@ -243,7 +251,9 @@ class BoggleInstance(Instance):
     def __repr__(self):
         return f'{self.ctx.message.channel.id} {self.name}: rounds({self.rounds}), timer({self.timer}), size({self.size})'
 
-
+###################################
+#Acro
+###################################
 class AcroInstance(Instance):
     '''
     Class explicit variables:
@@ -402,20 +412,27 @@ class AcroInstance(Instance):
     def __repr__(self):
         return f'{self.ctx.message.channel.id} {self.name}: rounds({self.rounds}), timer({self.timer})'
 
-
+###################################
+#Unscramble
+###################################
 class UnscrambleInstance(Instance):
     name = 'unscramble'
     '''
     Class explicit variables:
+    words: {easy: data.easy, hard: data.hard}
 
     Config dictionary arguments:
         {
         "rounds": 3, (minimum: 1, maximum: 16)
-        "timer": 120, (minimum: 10, maximum: 600)
+        "timer": 60, (minimum: 10, maximum: 600)
+        "difficulty: 'easy', (easy, medium, hard)
         }
     '''
+    words = {'easy': data.easy, 'medium': data.medium, 'hard': data.hard}
+
     defaults = {"rounds": 3,
-                "timer": 120,}
+                "timer": 60,
+                "difficulty": 'easy'}
 
     def __init__(self, ctx, bot, config = {}):
         self.ctx = ctx
@@ -424,18 +441,60 @@ class UnscrambleInstance(Instance):
         self.rounds = bounds(1, 16, config.get('rounds', self.defaults['rounds']))
         self.timer =  bounds(10, 600, config.get('timer', self.defaults['timer']))
 
+        difficulty = config.get('difficulty', self.defaults['difficulty'])
+        if difficulty not in self.words:
+            self.difficulty = self.defaults['difficulty']
+        else:
+            self.difficulty = difficulty
+
         self.scores = defaultdict(int)
+        self.unscrambled = None
+        self.scrambled = None
+        self.guess = None
 
     async def start(self):
         yield "A game of unscramble is starting! See !help unscramble if you wish to see the rules."
         await asyncio.sleep(1)
-        for round_ in self.rounds:
+        for round_ in range(1,self.rounds+1):
             warn, timer = self.warning(round_)
             yield warn
             await asyncio.sleep(timer)
+            self.new_round()
+            try:
+                yield fmt.header_code(f'Unscramble! You have {fmt.sec2min(self.timer)} minutes to find the word.', 
+                            f'{self.scrambled}',
+                            'css',)
+                await asyncio.wait_for(self.guess_phase(), timeout=self.timer)
+            except asyncio.TimeoutError as e:
+                logging.debug(e)
+            finally:
+                yield self.round_over()
+            await asyncio.sleep(3)
+                
+    def new_round(self):
+        self.unscrambled = random.choice(self.words[self.difficulty])
+        self.scrambled = ''.join(random.sample(self.unscrambled,len(self.unscrambled)))
+        self.guess = None
 
-    async def new_round():
-        pass
+    @flagger('playable')
+    async def guess_phase(self):
+        while self.guess is None:
+            await asyncio.sleep(1)
+
+    def round_over(self):
+        if self.guess:
+            return fmt.header_code(f'Round over! {self.get_user(self.guess[0])} guessed correctly.', 
+                                f'{self.guess[1]}',
+                                'css',)
+        else:
+            return fmt.header_code(f'Round over! No one answered correctly.', 
+                                f'{self.unscrambled}',
+                                'css',)
+
+    def play(self, userid, content):
+        if self.guess is None and content.lower() == self.unscrambled:
+            self.guess = (userid, content)
+            
 
 games = {
     'boggle': BoggleInstance,

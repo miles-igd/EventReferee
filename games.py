@@ -36,7 +36,7 @@ class Games(commands.Cog):
 
 
     @commands.command(brief='Start a boggle game.', 
-    description='Valid configurations (json): \n{rounds:[1,32], timer:[1,600], size:[3,9]}')
+    description='Valid configurations (json): \n{"rounds":[1,32], "timer":[1,600], "size":[3,9]}')
     async def boggle(self, ctx, *, config:str = None):
         '''
         Boggle is a word game of 16 or 25 dice.
@@ -59,7 +59,7 @@ class Games(commands.Cog):
         await self.start('boggle', ctx, config)
 
     @commands.command(brief='Start an acro game.', 
-    description='Valid configurations (json): \n{rounds:[1,32], timer:[1,600], vote_timer:[1,600], min:[3,9], max:[3,9]}')
+    description='Valid configurations (json): \n{"rounds":[1,32], "timer":[1,600], "vote_timer":[1,600], "min":[3,9], "max":[3,9]}')
     async def acro(self, ctx, *, config:str = None):
         '''
         Acro is a word game involving acronyms.
@@ -74,8 +74,8 @@ class Games(commands.Cog):
         await self.start('acro', ctx, config)
 
     @commands.command(brief='Start an unscramble game.', 
-    description='Valid configurations (json): \n{rounds:[1,32], timer:[1,600]')
-    async def acro(self, ctx, *, config:str = None):
+    description='Valid configurations (json): \n{"rounds":[1,32], "timer":[1,600], "difficulty":["easy","medium","hard"]')
+    async def unscramble(self, ctx, *, config:str = None):
         '''
         Unscramble is a word game.
         
@@ -83,6 +83,14 @@ class Games(commands.Cog):
         the word correctly wins the round.
 
         The winner is the player with the most wins at the end of the game.
+
+
+        Easy: Any* of ~10000 most frequent English words. 
+        Medium: Any* of ~50000 most frequent English words.
+        Hard: Any* of ~350000 English words. Good luck.
+
+        *Names included
+        *Words greater than length 4
         '''
         await self.start('unscramble', ctx, config)
 
@@ -114,8 +122,8 @@ class Games(commands.Cog):
             await ctx.send(UNEXPECTED_ERROR.format(e))
             logging.error(traceback.format_exc())
         finally:
-            #unregister game from Main registry, 
-            #the instance should not have any flags.
+            #Unregister game from Main registry, 
+            #The instance should not have any flags.
             #Otherwise, there is an error inside the instance.
             await self.bot.unregister(instance)
             logging.info(f'{instance} successfully unregistered from registry')

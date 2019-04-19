@@ -70,7 +70,7 @@ if __name__ == '__main__':
     bot = RefBot(command_prefix='!', description='Referee Core Bot.')
     @bot.event
     async def on_ready():
-        logging.info(f'{bot.user.name}: {bot.user.id}')
+        print(f'{bot.user.name}: {bot.user.id}')
 
 
     with open('_bot.creds', 'r') as file:
