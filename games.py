@@ -1,4 +1,3 @@
-import asyncio
 import discord
 import instances
 import logging
@@ -74,34 +73,46 @@ class Games(commands.Cog):
         '''
         await self.start('acro', ctx, config)
 
+    @commands.command(brief='Start an unscramble game.', 
+    description='Valid configurations (json): \n{rounds:[1,32], timer:[1,600]')
+    async def acro(self, ctx, *, config:str = None):
+        '''
+        Unscramble is a word game.
+        
+        Every round, a scrambled word will appear, the first person to guess
+        the word correctly wins the round.
+
+        The winner is the player with the most wins at the end of the game.
+        '''
+        await self.start('unscramble', ctx, config)
+
     async def start(self, game, ctx, config:str = None):
         '''Start an instance of [game] with json config [config], handling any errors'''
+        if ctx.message.channel.id in self.bot.games:
+            await ctx.send(
+            '```diff\n- An instance in this channel is already running.'
+            'If not, try running !reset in this channel.```')
+            return
+
         try:
             instance = instances.games[game].make(ctx, self.bot, config)
         except instances.ConfigError as e:
             await ctx.send(e)
-            logging.warning(traceback.format_exc())
+            logging.debug(traceback.format_exc())
             return
         except Exception as e:
             await ctx.send(UNEXPECTED_ERROR.format(e))
-            logging.warning(traceback.format_exc())
+            logging.error(traceback.format_exc())
             return
 
         #register game to Main registry
+        await self.bot.register(instance)
         try:
-            await self.bot.register(instance)
-        except ActiveGame as e:
-            await ctx.send(e)
-            logging.warning(traceback.format_exc())
-            return
-
-        try:
-            #await messages, until rounds are over.
             async for message in instance.start():
                 await ctx.send(message)
         except Exception as e:
             await ctx.send(UNEXPECTED_ERROR.format(e))
-            logging.warning(traceback.format_exc())
+            logging.error(traceback.format_exc())
         finally:
             #unregister game from Main registry, 
             #the instance should not have any flags.

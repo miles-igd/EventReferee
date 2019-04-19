@@ -1,7 +1,5 @@
 import math
 
-#from tabulate import tabulate
-
 three = ('<', '<', '>')
 two = ('<', '>')
 
@@ -22,6 +20,7 @@ def phrase(phrase):
     return ' '.join(phrase)
 
 def table(results, headers, align, tablefmt='simple', limit=10, default_width=4):
+    results = results[:limit]
     widths = [len(header) for header in headers]
     for row in results:
         for i, cell in enumerate(row):
@@ -36,7 +35,7 @@ def table(results, headers, align, tablefmt='simple', limit=10, default_width=4)
                         for i, cell in enumerate(row)]))
     headers.insert(1, '='*(sum(widths)+(len(widths)-1)*3))
 
-    return '\n'.join(headers[:limit])
+    return '\n'.join(headers)
 
 if __name__ == '__main__':
     tablet = [['Abby', 'Worcester Sauce', 72],
@@ -51,4 +50,4 @@ if __name__ == '__main__':
              ['Ava', 'Mustard', 75],
              ['Brit', 'Sugar', 2]]
 
-    print(table(tablet, ['Name', 'Condiment', 'Number'], ('<', '>', '>')))
+    print(table(tablet, ['Name', 'Condiment', 'Number'], ('<', '<', '>')))

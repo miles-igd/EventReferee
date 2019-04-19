@@ -1,7 +1,5 @@
-import asyncio
 import discord
 import games
-import inspect
 import logging
 import sql
 
@@ -20,8 +18,9 @@ class RefBot(commands.Bot):
     async def register(self, instance):
         '''If a game is running, it HAS to be in the registry, otherwise it's broken.
         This function should only be called at the beginning of an instance's life.'''
-        if instance.ctx.message.channel.id in self.games:
-            raise games.ActiveGame('An instance in this channel is already running. If not, try running !reset in this channel.')
+        #if instance.ctx.message.channel.id in self.games:
+        #    raise games.ActiveGame('```diff\n- An instance in this channel is already running.'
+        #                            'If not, try running !reset in this channel.```')
 
         self.games[instance.ctx.message.channel.id] = instance
 

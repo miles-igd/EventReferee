@@ -280,8 +280,6 @@ class AcroInstance(Instance):
                 "min": 4,
                 "max": 7}
 
-    possible_flags = {'voting'}
-
     def __init__(self, ctx, bot, config = {}):
         self.ctx = ctx
         self.bot = bot
@@ -409,21 +407,35 @@ class UnscrambleInstance(Instance):
     name = 'unscramble'
     '''
     Class explicit variables:
-        freq: distribution of first letter of 100,000+ words not including
-              stop words. 
-        emojis: a string of emojis
 
     Config dictionary arguments:
         {
         "rounds": 3, (minimum: 1, maximum: 16)
         "timer": 120, (minimum: 10, maximum: 600)
-        "min": 4 (minimum: 3, maximum: 9)
-        "max": 7 (minimum: 3, maximum: 9)
         }
-        if min is less than max than the range is reversed (ie. [max, min])
-        later this might raise an exception
     '''
-    pass
+    defaults = {"rounds": 3,
+                "timer": 120,}
+
+    def __init__(self, ctx, bot, config = {}):
+        self.ctx = ctx
+        self.bot = bot
+
+        self.rounds = bounds(1, 16, config.get('rounds', self.defaults['rounds']))
+        self.timer =  bounds(10, 600, config.get('timer', self.defaults['timer']))
+
+        self.scores = defaultdict(int)
+
+    async def start(self):
+        yield "A game of unscramble is starting! See !help unscramble if you wish to see the rules."
+        await asyncio.sleep(1)
+        for round_ in self.rounds:
+            warn, timer = self.warning(round_)
+            yield warn
+            await asyncio.sleep(timer)
+
+    async def new_round():
+        pass
 
 games = {
     'boggle': BoggleInstance,
